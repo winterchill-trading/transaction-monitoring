@@ -58,7 +58,7 @@ let of_score ~name ~version ~severity ~score ~reasons =
   ; facts =
       ("score", sprintf "%.6f" score)
       :: List.map reasons ~f:(fun (feature, c) -> "reason:" ^ feature, sprintf "%+.4f" c)
-  ; reference = "model card in models/<name>/CARD.md"
+  ; reference = "model metrics in models/<name>/metrics.json"
   }
 ;;
 
