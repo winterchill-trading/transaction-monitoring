@@ -15,3 +15,12 @@
   pg-async)
  (preprocess
   (pps ppx_jane)))
+
+(rule
+ (targets migrations_sql.ml)
+ (deps
+  (glob_files %{project_root}/migrations/*.sql))
+ (action
+  (with-stdout-to
+   %{targets}
+   (run gen/gen_migrations.exe %{deps}))))
