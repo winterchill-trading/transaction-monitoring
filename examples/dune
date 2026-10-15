@@ -1,0 +1,16 @@
+(executable
+ (name quickstart)
+ (libraries transaction-monitoring core async money ledger risk-rules)
+ (preprocess
+  (pps ppx_jane)))
+
+(rule
+ (deps ../models/tm-aml-gbdt/model.json)
+ (with-stdout-to
+  quickstart.output
+  (run ./quickstart.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (diff quickstart.expected quickstart.output)))
