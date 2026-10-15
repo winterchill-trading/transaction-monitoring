@@ -1,0 +1,108 @@
+{
+  "name": "tm-aml-gbdt",
+  "rows": {
+    "train": 350777,
+    "calibrate": 107710,
+    "test": 193840,
+    "test_positive": 428
+  },
+  "roc_auc": 0.999853419295133,
+  "average_precision": 0.9600857517530544,
+  "positive_rate": 0.0022080066033842343,
+  "top_k_per_day": {
+    "10": {
+      "precision": 0.8765432098765432,
+      "recall": 0.3317757009345794
+    },
+    "25": {
+      "precision": 0.7189054726368159,
+      "recall": 0.6752336448598131
+    },
+    "50": {
+      "precision": 0.49875311720698257,
+      "recall": 0.9345794392523364
+    }
+  },
+  "thresholds": {
+    "review": 0.0005240743343596039,
+    "block": 0.11712513645020801,
+    "alerts_per_day": 60,
+    "block_precision": 0.98
+  },
+  "rules": {
+    "alerts": 979,
+    "alerts_per_day": 57.588235294117645,
+    "precision": 0.20735444330949948,
+    "event_recall": 0.4742990654205608,
+    "episodes": 92,
+    "episode_recall": 0.8804347826086957,
+    "by_typology": {
+      "atm_cash": "8/13",
+      "card_testing": "5/8",
+      "dormant_reactivation": "6/6",
+      "high_risk_corridor": "14/15",
+      "mule_fan_in": "8/8",
+      "rapid_movement": "9/9",
+      "sanctions_adjacent": "13/13",
+      "smurfing": "6/7",
+      "structuring": "12/13"
+    }
+  },
+  "model": {
+    "alerts": 688,
+    "alerts_per_day": 40.470588235294116,
+    "precision": 0.6104651162790697,
+    "event_recall": 0.9813084112149533,
+    "episodes": 92,
+    "episode_recall": 0.9891304347826086,
+    "by_typology": {
+      "atm_cash": "13/13",
+      "card_testing": "8/8",
+      "dormant_reactivation": "6/6",
+      "high_risk_corridor": "14/15",
+      "mule_fan_in": "8/8",
+      "rapid_movement": "9/9",
+      "sanctions_adjacent": "13/13",
+      "smurfing": "7/7",
+      "structuring": "13/13"
+    }
+  },
+  "rules_or_model": {
+    "alerts": 1427,
+    "alerts_per_day": 83.94117647058823,
+    "precision": 0.2964260686755431,
+    "event_recall": 0.9883177570093458,
+    "episodes": 92,
+    "episode_recall": 1.0,
+    "by_typology": {
+      "atm_cash": "13/13",
+      "card_testing": "8/8",
+      "dormant_reactivation": "6/6",
+      "high_risk_corridor": "15/15",
+      "mule_fan_in": "8/8",
+      "rapid_movement": "9/9",
+      "sanctions_adjacent": "13/13",
+      "smurfing": "7/7",
+      "structuring": "13/13"
+    }
+  },
+  "model_block": {
+    "alerts": 380,
+    "alerts_per_day": 22.352941176470587,
+    "precision": 0.9473684210526315,
+    "event_recall": 0.8411214953271028,
+    "episodes": 92,
+    "episode_recall": 0.8913043478260869,
+    "by_typology": {
+      "atm_cash": "13/13",
+      "card_testing": "8/8",
+      "dormant_reactivation": "6/6",
+      "high_risk_corridor": "10/15",
+      "mule_fan_in": "8/8",
+      "rapid_movement": "9/9",
+      "sanctions_adjacent": "11/13",
+      "smurfing": "7/7",
+      "structuring": "10/13"
+    }
+  }
+}
