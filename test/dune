@@ -17,7 +17,8 @@
  (inline_tests
   (deps
    (glob_files fixtures/*.csv)
-   ../models/tm-aml-gbdt/model.json)
+   ../models/tm-aml-gbdt/model.json
+   (glob_files ../examples/*.sexp))
   (flags
    (:standard -source-tree-root .)))
  (preprocess
