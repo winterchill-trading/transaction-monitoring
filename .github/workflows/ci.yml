@@ -1,0 +1,48 @@
+name: ci
+on: [push, pull_request]
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # PostgreSQL for the Store_pg conformance tests; each test creates its own database.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s
+          --health-retries 20
+    env:
+      TM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      # libpq-dev builds pg-async's libpq bindings.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpq-dev
+      - uses: winterchill-trading/infra/.github/actions/ox-setup@main
+        with:
+          pins: |
+            pg-async https://github.com/winterchill-trading/pg-async.git
+            fixed-decimal https://github.com/winterchill-trading/fixed-decimal.git
+            money https://github.com/winterchill-trading/money.git
+            ledger https://github.com/winterchill-trading/ledger.git
+            payments-core https://github.com/winterchill-trading/payments-core.git
+            risk-rules https://github.com/winterchill-trading/risk-rules.git
+            risk-models https://github.com/winterchill-trading/risk-models.git
+      - run: opam exec -- dune build
+      - run: opam exec -- dune test
+      # odoc does not declare result; the local switch only had it transitively.
+      # listing the pins keeps the solver from dropping sibling packages
+      - run: opam install -y result odoc $(opam pin list --short)
+      - name: Build API docs (odoc warnings fail the step)
+        env:
+          ODOC_WARN_ERROR: "true"
+        run: |
+          set -o pipefail
+          opam exec -- dune build @doc --display short 2>&1 | tee doc.log
+          if grep -q "Warning" doc.log; then exit 1; fi
+  obj-magic:
+    uses: winterchill-trading/infra/.github/workflows/obj-magic.yml@main

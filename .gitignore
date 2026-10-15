@@ -1,0 +1,9 @@
+_build/
+_opam/
+*.install
+.merlin
+.venv/
+__pycache__/
+*.pyc
+ml/data/
+.env
