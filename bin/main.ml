@@ -195,6 +195,13 @@ let typologies =
            (Typology.reference t))))
 ;;
 
+let default_config =
+  Command.basic
+    ~summary:"Print the default rules config (a starting point for -config files)"
+    (Command.Param.return (fun () ->
+       print_endline (Sexp.to_string_hum [%sexp (Rules.Config.default : Rules.Config.t)])))
+;;
+
 let check_model =
   Command.basic
     ~summary:"Load a model and check it against the feature schema"
@@ -226,5 +233,6 @@ let () =
        ; "bench", Bench_cmd.command
        ; "typologies", typologies
        ; "check-model", check_model
+       ; "default-config", default_config
        ])
 ;;
