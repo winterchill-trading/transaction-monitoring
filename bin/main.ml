@@ -61,8 +61,8 @@ let features =
   Command.basic
     ~summary:"Export one feature row per event as CSV, for model training"
     ~readme:(fun () ->
-      "Columns: event_id, customer, day (since the first event), label (typology or \
-       empty), rules (the outcome of the rules alone), rule_hits (typologies, \
+      "Columns: event_id, customer, day (days since 1970-01-01 UTC, fractional), label \
+       (typology or empty), rules (the outcome of the rules alone), rule_hits (typologies, \
        semicolon-separated), then every feature of the schema in order. Features are \
        computed by the same code that scores live events, from profiles built over the \
        file in order.")
@@ -73,11 +73,6 @@ let features =
        let evaluator = Evaluator.create config |> Or_error.ok_exn in
        let profiles = Evaluator.Profiles.create config.profile in
        let labelled = read_labelled events in
-       let first =
-         match labelled with
-         | [] -> Time_ns.epoch
-         | l :: _ -> l.event.occurred_at
-       in
        let x = Array.create ~len:(Risk_models.Schema.length Features.schema) 0. in
        let float_text v = if Float.is_nan v then "" else sprintf "%.17g" v in
        Out_channel.with_file out ~f:(fun oc ->
@@ -109,7 +104,7 @@ let features =
                  ; Ids.Customer_id.to_string event.customer
                  ; sprintf
                      "%.6f"
-                     (Time_ns.Span.to_day (Time_ns.diff event.occurred_at first))
+                     (Time_ns.Span.to_day (Time_ns.to_span_since_epoch event.occurred_at))
                  ; Option.value_map label ~default:"" ~f:Typology.name
                  ; Decision.Outcome.to_string decision.outcome
                  ; String.concat ~sep:";" hits
