@@ -66,5 +66,6 @@ val of_score
   -> reasons:(string * float) list
   -> t
 
-(** ["[review] structuring: 3 amounts in [8500.00, 10000.00) within 7d ..."]. *)
+(** One line: severity, source and summary, e.g.
+    {v [review] structuring: 3 amounts in [8500.00, 10000.00) within 7d ... v} *)
 val to_string_hum : t -> string

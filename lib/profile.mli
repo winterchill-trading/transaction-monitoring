@@ -14,9 +14,9 @@
     already applied is applied at the newest time (late events are rare and usually
     seconds late; clamping keeps every window consistent and replays deterministic).
 
-    Memory per customer is constant: about 840 counters, two quantile sketches, and
-    tables of at most 64 counterparties and 8 devices. A profile is mutable; take a
-    {!Customer.snapshot} (an immutable copy with a stable bin_io form) to persist it. *)
+    Memory per customer is constant: about 840 counters, two quantile sketches, and tables
+    of at most 64 counterparties and 8 devices. A profile is mutable; take a
+    {!Customer.val-snapshot} (an immutable copy with a stable bin_io form) to persist it. *)
 
 open! Core
 
@@ -34,8 +34,8 @@ module Params : sig
     }
   [@@deriving sexp, compare, equal, bin_io]
 
-  (** 10 000.00, 15% band, round to 100.00, small card below 2.00 (all in minor units of
-      a two-decimal reporting currency). *)
+  (** 10 000.00, 15% band, round to 100.00, small card below 2.00 (all in minor units of a
+      two-decimal reporting currency). *)
   val default : t
 end
 
@@ -58,8 +58,8 @@ module Customer : sig
   val update : t -> Event.t -> unit
 
   module View : sig
-    (** What rules and features read: the profile as of [now], before the event.
-        Amounts are minor units of the reporting currency. *)
+    (** What rules and features read: the profile as of [now], before the event. Amounts
+        are minor units of the reporting currency. *)
     type t =
       { now : Time_ns.Alternate_sexp.t
       ; events : int
@@ -141,9 +141,9 @@ module Counterparty : sig
   val update : t -> Event.t -> unit
 
   module View : sig
-    (** "Paid" is money from the bank's customers to the counterparty (customer
-        outbound), "sent" is money from it to customers (customer inbound). Amounts are
-        minor units of the reporting currency. *)
+    (** "Paid" is money from the bank's customers to the counterparty (customer outbound),
+        "sent" is money from it to customers (customer inbound). Amounts are minor units
+        of the reporting currency. *)
     type t =
       { events : int
       ; first_seen : Time_ns.Alternate_sexp.t option

@@ -5,19 +5,29 @@
     {!evaluate} runs them all with risk-rules' [Engine] (every rule runs, a raising rule
     fails closed as a [Block]) and files each hit under the typology's risk-rules family.
 
-    | Typology | Triggers when (defaults) | Severity |
-    |---|---|---|
-    | structuring | 3 or more amounts in \[8 500, 10 000) within 7 days, this one included | Review |
-    | smurfing | an inbound payment under 10 000 from the 4th or later distinct payer in 24 h, inbound total at or above 10 000 | Review |
-    | rapid_movement | outbound of at least a quarter of what came in within 24 h (at least 1 000), outbound in 24 h between 80% and 120% of it | Review |
-    | mule_fan_in | a transfer (not a card payment) of at least a quarter of the 7-day inflow, to at most 2 payees in 24 h, after 5 or more payers in 7 days, from an account younger than 90 days or paying out at least half of the inflow; or a payee first seen within 14 days collecting from 5 or more customers in 7 days | Review |
-    | dormant_reactivation | 5 000 or more after 180 days without activity | Review |
-    | high_risk_corridor | counterparty in a higher-risk country, 1 000 or more or the first time | Review |
-    | card_testing | 5 or more small card attempts, or 3 or more declines, within 10-15 min | Block |
-    | atm_cash | more than 6 ATM operations or 3 000 in 24 h | Review |
-    | sanctions_adjacent | counterparty or IP country under sectoral restrictive measures | Review |
-    | threshold_report | cash in 24 h, this one included, reaches 10 000 | Allow (report) |
-    | unusual_amount | outbound 3 000 or more and 10 times the customer's p95, with 10 or more earlier events | Review |
+    Defaults, all Review unless noted:
+    - [structuring]: 3 or more amounts in \[8 500, 10 000) within 7 days, this one
+      included.
+    - [smurfing]: an inbound payment under 10 000 from the 4th or later distinct payer in
+      24 h, inbound total at or above 10 000.
+    - [rapid_movement]: an outbound payment of at least a quarter of what came in within
+      24 h (at least 1 000), with outbound in 24 h between 80% and 120% of it.
+    - [mule_fan_in]: a transfer (not a card payment) of at least a quarter of the 7-day
+      inflow, to at most 2 payees in 24 h, after 5 or more payers in 7 days, from an
+      account younger than 90 days or paying out at least half of the inflow; or a payee
+      first seen within 14 days collecting from 5 or more customers in 7 days.
+    - [dormant_reactivation]: 5 000 or more after 180 days without activity.
+    - [high_risk_corridor]: a counterparty in a higher-risk country, 1 000 or more or the
+      first time.
+    - [card_testing] (Block): 5 or more small card attempts, or 3 or more declines, within
+      10 to 15 minutes.
+    - [atm_cash]: more than 6 ATM operations or more than 3 000 in 24 h.
+    - [sanctions_adjacent]: the counterparty or IP country is under sectoral restrictive
+      measures.
+    - [threshold_report] (Allow, recorded as a report): cash in 24 h, this one included,
+      reaches 10 000.
+    - [unusual_amount]: outbound 3 000 or more and 10 times the customer's p95, with 10 or
+      more earlier events.
 
     Amounts are in the reporting currency. *)
 
