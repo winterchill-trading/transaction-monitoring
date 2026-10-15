@@ -13,7 +13,8 @@
   risk-rules
   risk-models
   pg-async
-  pg-async.testing)
+  pg-async.testing
+  uri)
  (inline_tests
   (deps
    (glob_files fixtures/*.csv)
