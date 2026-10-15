@@ -157,9 +157,15 @@ let rapid_movement (c : Config.t) =
   create Rapid_movement ~severity:Review (fun (ctx : Context.t) ->
     let inbound = ctx.customer.in_sum_24h in
     let outbound = ctx.customer.out_sum_24h + ctx.amount in
+    (* Pass-through: what leaves matches what came in. Paying out much more than came in
+       is spending from an existing balance, and a small payment after the money already
+       left is the same episode, not a new one (the payment itself must be a quarter of
+       the inflow). *)
     if Context.is_outbound ctx
        && inbound >= c.rapid_min_inbound
        && outbound * 10_000 >= inbound * c.rapid_share_bps
+       && outbound * 10_000 <= inbound * (20_000 - c.rapid_share_bps)
+       && ctx.amount * 4 >= inbound
     then (
       let since_inbound =
         Option.map ctx.customer.last_inbound ~f:(fun t ->
@@ -193,7 +199,19 @@ let mule_fan_in (c : Config.t) =
       in
       let drains = (ctx.customer.out_sum_24h + ctx.amount) * 2 >= ctx.customer.in_sum_7d in
       let collector = ctx.counterparty.payers_7d + 1 in
-      if payers >= c.mule_min_payers && payees <= c.mule_max_payees && (young || drains)
+      (* A payee the bank first saw within two weeks: billers, merchants and landlords
+         paid by many customers have a long history. Card payments never count. *)
+      let new_payee =
+        match ctx.counterparty.first_seen with
+        | None -> true
+        | Some first -> Time_ns.Span.(Time_ns.diff ctx.customer.now first < of_day 14.)
+      in
+      let card = Event.Rail.equal ctx.event.rail Card in
+      if (not card)
+         && payers >= c.mule_min_payers
+         && payees <= c.mule_max_payees
+         && (young || drains)
+         && ctx.amount * 4 >= ctx.customer.in_sum_7d
       then
         Some
           ( sprintf
@@ -207,7 +225,7 @@ let mule_fan_in (c : Config.t) =
             ; ( "account_age"
               , Option.value_map (Context.account_age ctx) ~default:"unknown" ~f:span_days )
             ] )
-      else if collector >= c.mule_collector_min_customers
+      else if (not card) && new_payee && collector >= c.mule_collector_min_customers
       then
         Some
           ( sprintf "payee collects from %d of the bank's customers in 7d" collector

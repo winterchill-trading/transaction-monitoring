@@ -9,8 +9,8 @@
     |---|---|---|
     | structuring | 3 or more amounts in \[8 500, 10 000) within 7 days, this one included | Review |
     | smurfing | an inbound payment under 10 000 from the 4th or later distinct payer in 24 h, inbound total at or above 10 000 | Review |
-    | rapid_movement | outbound, at least 1 000 came in within 24 h and outbound in 24 h reaches 80% of it | Review |
-    | mule_fan_in | outbound to at most 2 payees in 24 h after 5 or more payers in 7 days, account younger than 90 days or paying out at least half of the inflow; or a payee collecting from 5 or more customers in 7 days | Review |
+    | rapid_movement | outbound of at least a quarter of what came in within 24 h (at least 1 000), outbound in 24 h between 80% and 120% of it | Review |
+    | mule_fan_in | a transfer (not a card payment) of at least a quarter of the 7-day inflow, to at most 2 payees in 24 h, after 5 or more payers in 7 days, from an account younger than 90 days or paying out at least half of the inflow; or a payee first seen within 14 days collecting from 5 or more customers in 7 days | Review |
     | dormant_reactivation | 5 000 or more after 180 days without activity | Review |
     | high_risk_corridor | counterparty in a higher-risk country, 1 000 or more or the first time | Review |
     | card_testing | 5 or more small card attempts, or 3 or more declines, within 10-15 min | Block |
