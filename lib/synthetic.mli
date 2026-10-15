@@ -29,7 +29,7 @@ module Config : sig
     }
   [@@deriving sexp_of]
 
-  (** 4 000 customers, 75 days from 2026-01-05, seed 42, 4% with an episode. *)
+  (** 5 000 customers, 75 days from 2026-01-05, seed 42, 8% with an episode. *)
   val default : t
 end
 

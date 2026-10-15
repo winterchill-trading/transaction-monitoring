@@ -11,11 +11,11 @@ module Config = struct
   [@@deriving sexp_of]
 
   let default =
-    { customers = 4_000
+    { customers = 5_000
     ; days = 75
     ; seed = 42
     ; start = Time_ns.of_string_with_utc_offset "2026-01-05T00:00:00Z"
-    ; bad_share = 0.04
+    ; bad_share = 0.08
     }
   ;;
 end
