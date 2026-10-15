@@ -1,0 +1,21 @@
+(library
+ (name transaction_monitoring_test)
+ (libraries
+  transaction-monitoring
+  core
+  core_unix
+  core_unix.filename_unix
+  async
+  async_kernel
+  yojson
+  money
+  ledger
+  risk-rules
+  risk-models
+  pg-async
+  pg-async.testing)
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (preprocess
+  (pps ppx_jane)))
