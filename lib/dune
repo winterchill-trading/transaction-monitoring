@@ -1,0 +1,17 @@
+(library
+ (name transaction_monitoring)
+ (public_name transaction-monitoring)
+ (libraries
+  core
+  core_unix
+  async
+  async_kernel
+  yojson
+  zarith
+  money
+  ledger
+  risk-rules
+  risk-models
+  pg-async)
+ (preprocess
+  (pps ppx_jane)))
