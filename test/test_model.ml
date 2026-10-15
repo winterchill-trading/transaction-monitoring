@@ -17,7 +17,8 @@ let parity_rows () =
     List.map rows ~f:(fun row ->
       let cells =
         String.split row ~on:','
-        |> List.map ~f:(fun c -> if String.is_empty c then Float.nan else Float.of_string c)
+        |> List.map ~f:(fun c ->
+          if String.is_empty c then Float.nan else Float.of_string c)
         |> Array.of_list
       in
       Array.sub cells ~pos:0 ~len:n, cells.(n), cells.(n + 1), cells.(n + 2))
@@ -40,7 +41,10 @@ let%expect_test "OCaml scores equal scikit-learn's on the parity rows" =
   in
   (* Trees add and compare only, so the margin is bit-identical across platforms; the
      sigmoid goes through exp, whose last bit may differ between libm versions. *)
-  printf "%d rows, max difference below 1e-9: %b\n" (List.length rows) Float.(worst < 1e-9);
+  printf
+    "%d rows, max difference below 1e-9: %b\n"
+    (List.length rows)
+    Float.(worst < 1e-9);
   [%expect {| 400 rows, max difference below 1e-9: true |}]
 ;;
 
@@ -77,7 +81,8 @@ let%expect_test "a model trained on another schema is refused" =
                         , `String
                             (Risk_models.Schema.digest_of_names
                                ("other"
-                                :: List.tl_exn (Array.to_list Features.schema.features))) )
+                                :: List.tl_exn (Array.to_list Features.schema.features)))
+                        )
                       | _ -> k, v))
                | v -> v )
            else k, v))
@@ -91,7 +96,8 @@ let%expect_test "a model trained on another schema is refused" =
 
 let%expect_test "decisions with the model: shadow records, active acts" =
   let events =
-    Synthetic.generate { Synthetic.Config.default with customers = 200; days = 30; bad_share = 0.3 }
+    Synthetic.generate
+      { Synthetic.Config.default with customers = 200; days = 30; bad_share = 0.3 }
   in
   let run mode =
     let evaluator =
@@ -102,7 +108,8 @@ let%expect_test "decisions with the model: shadow records, active acts" =
       |> Or_error.ok_exn
     in
     let replay = Replay.create evaluator in
-    List.iter events ~f:(fun l -> ignore (Replay.step ?label:l.label replay l.event : Decision.t));
+    List.iter events ~f:(fun l ->
+      ignore (Replay.step ?label:l.label replay l.event : Decision.t));
     let r = Replay.report replay in
     printf
       "%s: hold %d, block %d, labelled alerted %d of %d, unlabelled alerted %d\n"
@@ -114,7 +121,8 @@ let%expect_test "decisions with the model: shadow records, active acts" =
       r.candidate.unlabelled_alerted
   in
   List.iter Policy.Model_mode.all ~f:run;
-  [%expect {|
+  [%expect
+    {|
     Off: hold 328, block 41, labelled alerted 123 of 223, unlabelled alerted 246
     Shadow: hold 328, block 41, labelled alerted 123 of 223, unlabelled alerted 246
     Active: hold 915, block 322, labelled alerted 220 of 223, unlabelled alerted 1017

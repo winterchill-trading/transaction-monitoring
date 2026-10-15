@@ -167,9 +167,11 @@ let commit t (c : Store.Commit.t) =
            EXCLUDED.events, body = EXCLUDED.body WHERE \
            transaction_monitoring.customer_profiles.events < EXCLUDED.events"
           ~params:
-            [ Param.string (Ids.Customer_id.to_string (Profile.Customer.customer customer))
+            [ Param.string
+                (Ids.Customer_id.to_string (Profile.Customer.customer customer))
             ; Param.int (Profile.Customer.events customer)
-            ; Param.bytea (encode Profile.Customer.Stable.Snapshot.V1.bin_writer_t c.customer)
+            ; Param.bytea
+                (encode Profile.Customer.Stable.Snapshot.V1.bin_writer_t c.customer)
             ]
       in
       let cp = Profile.Counterparty.of_snapshot c.counterparty in
@@ -186,7 +188,9 @@ let commit t (c : Store.Commit.t) =
                 (Ids.Counterparty_id.to_string (Profile.Counterparty.counterparty cp))
             ; Param.int (Profile.Counterparty.events cp)
             ; Param.bytea
-                (encode Profile.Counterparty.Stable.Snapshot.V1.bin_writer_t c.counterparty)
+                (encode
+                   Profile.Counterparty.Stable.Snapshot.V1.bin_writer_t
+                   c.counterparty)
             ]
       in
       Store.Commit_result.Committed))
@@ -255,7 +259,8 @@ let alerts ?status ?customer t =
     t.pool
     ~label:"alerts"
     "SELECT body FROM transaction_monitoring.alerts WHERE ($1::text IS NULL OR status = \
-     $1) AND ($2::text IS NULL OR customer = $2) ORDER BY opened_at, alert_id COLLATE \"C\""
+     $1) AND ($2::text IS NULL OR customer = $2) ORDER BY opened_at, alert_id COLLATE \
+     \"C\""
     ~params:
       [ Param.option Type.string (Option.map status ~f:Alert.Status.to_string)
       ; Param.option Type.string (Option.map customer ~f:Ids.Customer_id.to_string)
@@ -268,7 +273,8 @@ let alert_events t id =
   Pool.fetch_all
     t.pool
     ~label:"alert_events"
-    "SELECT body FROM transaction_monitoring.alert_events WHERE alert_id = $1 ORDER BY seq"
+    "SELECT body FROM transaction_monitoring.alert_events WHERE alert_id = $1 ORDER BY \
+     seq"
     ~params:[ Param.string (Ids.Alert_id.to_string id) ]
     ~row:alert_event_row
   |> or_error ~label:"alert_events"
@@ -280,7 +286,8 @@ let decisions ?customer t =
     ~label:"decisions"
     "SELECT body FROM transaction_monitoring.decisions WHERE ($1::text IS NULL OR \
      customer = $1) ORDER BY decided_at, event_id COLLATE \"C\""
-    ~params:[ Param.option Type.string (Option.map customer ~f:Ids.Customer_id.to_string) ]
+    ~params:
+      [ Param.option Type.string (Option.map customer ~f:Ids.Customer_id.to_string) ]
     ~row:decision_row
   |> or_error ~label:"decisions"
 ;;

@@ -9,9 +9,8 @@ val t0 : Time_ns.t
 (** [at_min m] is [t0] plus [m] minutes. *)
 val at_min : float -> Time_ns.t
 
-(** An event in EUR (base currency EUR) with defaults for everything not given:
-    customer ["cust-1"], counterparty ["cp-1"], SEPA, outbound, not declined. [amount] is
-    in cents. *)
+(** An event in EUR (base currency EUR) with defaults for everything not given: customer
+    ["cust-1"], counterparty ["cp-1"], SEPA, outbound, not declined. [amount] is in cents. *)
 val event
   :  ?id:string
   -> ?customer:string

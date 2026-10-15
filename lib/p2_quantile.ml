@@ -16,7 +16,8 @@ end
 include Stable.V1
 
 let create ~p =
-  if not Float.(p > 0. && p < 1.) then raise_s [%message "P2_quantile: p outside (0, 1)" (p : float)];
+  if not Float.(p > 0. && p < 1.)
+  then raise_s [%message "P2_quantile: p outside (0, 1)" (p : float)];
   { p
   ; count = 0
   ; q = Array.create ~len:5 0.
@@ -25,7 +26,10 @@ let create ~p =
   }
 ;;
 
-let copy t = { t with q = Array.copy t.q; n = Array.copy t.n; desired = Array.copy t.desired }
+let copy t =
+  { t with q = Array.copy t.q; n = Array.copy t.n; desired = Array.copy t.desired }
+;;
+
 let p t = t.p
 let count t = t.count
 
@@ -33,10 +37,11 @@ let parabolic t i d =
   let q = t.q
   and n = t.n in
   q.(i)
-  +. d
-     /. (n.(i + 1) -. n.(i - 1))
-     *. (((n.(i) -. n.(i - 1) +. d) *. (q.(i + 1) -. q.(i)) /. (n.(i + 1) -. n.(i)))
-         +. ((n.(i + 1) -. n.(i) -. d) *. (q.(i) -. q.(i - 1)) /. (n.(i) -. n.(i - 1))))
+  +. (d
+      /. (n.(i + 1) -. n.(i - 1))
+      *. (((n.(i) -. n.(i - 1) +. d) *. (q.(i + 1) -. q.(i)) /. (n.(i + 1) -. n.(i)))
+          +. ((n.(i + 1) -. n.(i) -. d) *. (q.(i) -. q.(i - 1)) /. (n.(i) -. n.(i - 1))))
+     )
 ;;
 
 let linear t i d =

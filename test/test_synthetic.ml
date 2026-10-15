@@ -6,7 +6,13 @@ let small = { Synthetic.Config.default with customers = 300; days = 40; bad_shar
 let%expect_test "a small population: volumes, labels, and determinism" =
   let a = Synthetic.generate small in
   let b = Synthetic.generate small in
-  printf "deterministic: %b\n" (List.equal (fun (x : Synthetic.labelled) y -> Event.equal x.event y.event && Option.equal Typology.equal x.label y.label) a b);
+  printf
+    "deterministic: %b\n"
+    (List.equal
+       (fun (x : Synthetic.labelled) y ->
+         Event.equal x.event y.event && Option.equal Typology.equal x.label y.label)
+       a
+       b);
   printf "events: %d\n" (List.length a);
   let by_label =
     List.filter_map a ~f:(fun l -> l.label)
@@ -19,7 +25,8 @@ let%expect_test "a small population: volumes, labels, and determinism" =
       Time_ns.compare x.event.occurred_at y.event.occurred_at)
   in
   printf "time-ordered: %b\n" sorted;
-  [%expect {|
+  [%expect
+    {|
     deterministic: true
     events: 28303
     ((structuring 25) (smurfing 50) (rapid_movement 24) (mule_fan_in 54)

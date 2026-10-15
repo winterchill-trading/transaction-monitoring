@@ -66,8 +66,8 @@ let description = function
   | Structuring ->
     "repeated amounts just under the reporting threshold from one customer within 7 days"
   | Smurfing ->
-    "several different payers each sending amounts under the reporting threshold into one \
-     account within 24 hours, together above it"
+    "several different payers each sending amounts under the reporting threshold into \
+     one account within 24 hours, together above it"
   | Rapid_movement ->
     "most of what came in during the last 24 hours leaves again (pass-through)"
   | Mule_fan_in ->
@@ -87,8 +87,7 @@ let description = function
 
 let reference = function
   | Structuring -> "FATF R.20; 31 CFR 1010.314 (structuring to evade reporting)"
-  | Smurfing ->
-    "FATF R.20; EBA/GL/2021/02 4.46 (unusual patterns); 31 CFR 1010.314"
+  | Smurfing -> "FATF R.20; EBA/GL/2021/02 4.46 (unusual patterns); 31 CFR 1010.314"
   | Rapid_movement ->
     "FATF Professional Money Laundering (2018), layering; EBA/GL/2021/02 4.72-4.75 \
      (transaction monitoring)"

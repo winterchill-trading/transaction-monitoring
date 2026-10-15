@@ -28,7 +28,10 @@ let thresholds t model =
   in
   let in_range = Option.for_all ~f:(fun x -> Float.(x >= 0. && x <= 1.)) in
   if not (in_range hold_at && in_range block_at)
-  then Or_error.error_s [%message "thresholds outside [0, 1]" (hold_at : float option) (block_at : float option)]
+  then
+    Or_error.error_s
+      [%message
+        "thresholds outside [0, 1]" (hold_at : float option) (block_at : float option)]
   else (
     match hold_at, block_at with
     | Some h, Some b when Float.(h > b) ->

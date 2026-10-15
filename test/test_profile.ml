@@ -49,7 +49,9 @@ let%test_unit "a snapshot taken mid-stream resumes to the same profile" =
     ~f:(fun (events, cut) ->
       let cut = Int.abs cut % (List.length events + 1) in
       let #(first, rest) = List.split_n events cut in
-      let straight = Profile.Customer.create params (Ids.Customer_id.of_string "cust-1") in
+      let straight =
+        Profile.Customer.create params (Ids.Customer_id.of_string "cust-1")
+      in
       List.iter events ~f:(Profile.Customer.update straight);
       let partial = Profile.Customer.create params (Ids.Customer_id.of_string "cust-1") in
       List.iter first ~f:(Profile.Customer.update partial);
@@ -60,7 +62,9 @@ let%test_unit "a snapshot taken mid-stream resumes to the same profile" =
       in
       let resumed =
         Profile.Customer.of_snapshot
-          (Bin_prot.Reader.of_string Profile.Customer.Stable.Snapshot.V1.bin_reader_t bytes)
+          (Bin_prot.Reader.of_string
+             Profile.Customer.Stable.Snapshot.V1.bin_reader_t
+             bytes)
       in
       List.iter rest ~f:(Profile.Customer.update resumed);
       [%test_result: Profile.Customer.snapshot]
@@ -85,12 +89,21 @@ let%expect_test "a view of a small history" =
     [ event ~direction:Inbound ~counterparty:"employer" ~at:(at_min 0.) 950_000
     ; event ~counterparty:"landlord" ~counterparty_country:"DE" ~at:(at_min 10.) 120_000
     ; event ~counterparty:"shop" ~rail:Card ~card_channel:Online ~at:(at_min 20.) 150
-    ; event ~counterparty:"shop" ~rail:Card ~card_channel:Online ~declined:true ~at:(at_min 21.) 150
+    ; event
+        ~counterparty:"shop"
+        ~rail:Card
+        ~card_channel:Online
+        ~declined:true
+        ~at:(at_min 21.)
+        150
     ; event ~counterparty:"atm-1" ~rail:Card ~card_channel:Atm ~at:(at_min 30.) 20_000
     ];
-  let next = event ~counterparty:"new-friend" ~counterparty_country:"AE" ~at:(at_min 31.) 900_000 in
+  let next =
+    event ~counterparty:"new-friend" ~counterparty_country:"AE" ~at:(at_min 31.) 900_000
+  in
   print_s [%sexp (Profile.Customer.view profile next : View.t)];
-  [%expect {|
+  [%expect
+    {|
     ((now "2026-03-02 09:31:00Z") (events 5)
      (first_seen ("2026-03-02 09:00:00Z")) (last_seen ("2026-03-02 09:30:00Z"))
      (last_inbound ("2026-03-02 09:00:00Z")) (out_n_1h 3) (out_sum_1h 140150)

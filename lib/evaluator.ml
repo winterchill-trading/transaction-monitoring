@@ -43,8 +43,8 @@ let decide t ctx =
     | Some m, (Shadow | Active) ->
       Features.encode_into t.config ctx t.scratch;
       let score = Model.score m t.scratch in
-      (* Reasons cost a tree walk with attributions and some allocation; only scores
-         that reach a threshold are explained. *)
+      (* Reasons cost a tree walk with attributions and some allocation; only scores that
+         reach a threshold are explained. *)
       let reasons =
         match t.hold_at with
         | Some h when Float.(score >= h) -> snd (Model.explain m t.scratch)
@@ -76,11 +76,13 @@ module Profiles = struct
   ;;
 
   let customer t id =
-    Hashtbl.find_or_add t.customers id ~default:(fun () -> Profile.Customer.create t.params id)
+    Hashtbl.find_or_add t.customers id ~default:(fun () ->
+      Profile.Customer.create t.params id)
   ;;
 
   let counterparty t id =
-    Hashtbl.find_or_add t.counterparties id ~default:(fun () -> Profile.Counterparty.create id)
+    Hashtbl.find_or_add t.counterparties id ~default:(fun () ->
+      Profile.Counterparty.create id)
   ;;
 
   let customers t = Hashtbl.length t.customers

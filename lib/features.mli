@@ -12,9 +12,9 @@
 
 open! Core
 
-(** The risk-rules feature record for this event. Amounts are major units of the
-    reporting currency; fields that need data this library does not have (balance, SCA
-    failures, verification of payee, credential changes) are missing. *)
+(** The risk-rules feature record for this event. Amounts are major units of the reporting
+    currency; fields that need data this library does not have (balance, SCA failures,
+    verification of payee, credential changes) are missing. *)
 val risk_rules : Context.t -> Risk_rules.Features.t
 
 (** Names of the AML features, in vector order after the risk-rules columns. *)

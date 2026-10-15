@@ -43,17 +43,28 @@ let%expect_test "lifecycle" =
     show r;
     Result.map r ~f:fst |> Result.ok |> Option.value ~default:alert
   in
-  let alert = run alert (Close { by = ana "a1"; verdict = True_positive; note = "x"; at = at 1. }) in
+  let alert =
+    run alert (Close { by = ana "a1"; verdict = True_positive; note = "x"; at = at 1. })
+  in
   let alert = run alert (Assign { analyst = ana "a1"; at = at 2. }) in
   let alert = run alert (Assign { analyst = ana "a1"; at = at 3. }) in
   let alert = run alert (Flag_sar { by = ana "a2"; reason = "pattern"; at = at 4. }) in
-  let alert = run alert (Flag_sar { by = ana "a1"; reason = "layering via IR"; at = at 5. }) in
-  let alert = run alert (Close { by = ana "a1"; verdict = False_positive; note = "ok"; at = at 6. }) in
-  let alert = run alert (Close { by = ana "a1"; verdict = True_positive; note = "SAR drafted"; at = at 7. }) in
+  let alert =
+    run alert (Flag_sar { by = ana "a1"; reason = "layering via IR"; at = at 5. })
+  in
+  let alert =
+    run alert (Close { by = ana "a1"; verdict = False_positive; note = "ok"; at = at 6. })
+  in
+  let alert =
+    run
+      alert
+      (Close { by = ana "a1"; verdict = True_positive; note = "SAR drafted"; at = at 7. })
+  in
   let alert = run alert (Reopen { by = ana "a1"; reason = "second look"; at = at 8. }) in
   let alert = run alert (Reopen { by = ana "a2"; reason = "QA sample"; at = at 9. }) in
   ignore (alert : Alert.t);
-  [%expect {|
+  [%expect
+    {|
     ((alert.id alert-pay-1) (events ((Opened (at "2026-03-02 09:00:00Z")))))
     (refused
      ("assign the alert before closing it" (alert alert-pay-1) (status open)))
@@ -87,11 +98,7 @@ let%expect_test "lifecycle" =
 let%test "an allowed decision opens no alert" =
   let e = event ~at:t0 5_000 in
   let d =
-    Decision.create
-      Policy.default
-      ~event:e
-      ~rules:Risk_rules.Decision.allow
-      ~model:None
+    Decision.create Policy.default ~event:e ~rules:Risk_rules.Decision.allow ~model:None
     |> Or_error.ok_exn
   in
   Option.is_none (Alert.open_ d)
@@ -126,7 +133,8 @@ let%test_unit "invariants hold under any command sequence" =
           | Ok (t', events) ->
             (match t'.status, t'.assignee, t'.resolution with
              | Closed, Some _, Some r ->
-               assert (not (Alert.Verdict.equal r.verdict False_positive && t'.sar_candidate))
+               assert (
+                 not (Alert.Verdict.equal r.verdict False_positive && t'.sar_candidate))
              | Assigned, Some _, None -> ()
              | Open, None, None -> ()
              | _ -> raise_s [%message "inconsistent alert" (t' : Alert.t)]);

@@ -1,13 +1,13 @@
 (** The synchronous core: event in, decision out.
 
-    [decide] reads the customer's and counterparty's profiles (as views before the
-    event), runs the typology rules, scores the features with the model when the policy
-    uses one, and combines everything under the policy. [apply] then folds the event into
-    both profiles. Nothing here does I/O or reads a clock; {!Monitor} adds storage and
-    Async around it, {!Replay} runs it over a history.
+    [decide] reads the customer's and counterparty's profiles (as views before the event),
+    runs the typology rules, scores the features with the model when the policy uses one,
+    and combines everything under the policy. [apply] then folds the event into both
+    profiles. Nothing here does I/O or reads a clock; {!Monitor} adds storage and Async
+    around it, {!Replay} runs it over a history.
 
-    An evaluator owns a scratch feature vector, so one evaluator must not be used from
-    two Async jobs at once (the monitor serializes; replays are sequential). *)
+    An evaluator owns a scratch feature vector, so one evaluator must not be used from two
+    Async jobs at once (the monitor serializes; replays are sequential). *)
 
 open! Core
 

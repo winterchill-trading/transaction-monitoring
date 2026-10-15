@@ -7,7 +7,10 @@ let counter = ref 0
 let on_server admin_url =
   incr counter;
   let name =
-    sprintf "tm_test_%d_%d_%d" (Core_unix.getpid () |> Pid.to_int) !counter
+    sprintf
+      "tm_test_%d_%d_%d"
+      (Core_unix.getpid () |> Pid.to_int)
+      !counter
       (Time_ns.to_int_ns_since_epoch (Time_ns.now ()) % 1_000_000)
   in
   let%bind conn =

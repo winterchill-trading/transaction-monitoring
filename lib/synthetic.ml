@@ -107,13 +107,21 @@ let merchant_country rng i =
   (* 80% of merchants domestic-looking EU, the rest abroad; derived from the index so a
      merchant always has the same country *)
   ignore rng;
-  if i % 5 = 0 then abroad.(i % Array.length abroad) else residences.(i % Array.length residences)
+  if i % 5 = 0
+  then abroad.(i % Array.length abroad)
+  else residences.(i % Array.length residences)
 ;;
 
 let make_customer rng idx =
   let persona =
     let r = Rng.float rng in
-    if Float.(r < 0.66) then Salaried else if Float.(r < 0.78) then Student else if Float.(r < 0.88) then Business else Expat
+    if Float.(r < 0.66)
+    then Salaried
+    else if Float.(r < 0.78)
+    then Student
+    else if Float.(r < 0.88)
+    then Business
+    else Expat
   in
   let residence = Rng.pick rng residences in
   { idx
@@ -160,12 +168,15 @@ let base_draft c ~minute =
 ;;
 
 let day_minute rng day ~from_hour ~to_hour =
-  (Float.of_int day *. 1440.) +. (60. *. (from_hour +. (Rng.float rng *. (to_hour -. from_hour))))
+  (Float.of_int day *. 1440.)
+  +. (60. *. (from_hour +. (Rng.float rng *. (to_hour -. from_hour))))
 ;;
 
 let card rng c ~minute ?(abroad_country = None) ?label ?(declined = false) ?cents () =
   let m =
-    if Rng.chance rng 0.7 then Rng.pick rng c.favourite_merchants else Rng.int rng merchants
+    if Rng.chance rng 0.7
+    then Rng.pick rng c.favourite_merchants
+    else Rng.int rng merchants
   in
   let online = Rng.chance rng 0.35 in
   let cents = Option.value cents ~default:(Rng.amount rng ~median:28. ~sigma:0.9) in
@@ -188,7 +199,15 @@ let card rng c ~minute ?(abroad_country = None) ?label ?(declined = false) ?cent
   }
 ;;
 
-let atm rng c ~minute ?(country = None) ?label ?(direction = Event.Direction.Outbound) cents =
+let atm
+  rng
+  c
+  ~minute
+  ?(country = None)
+  ?label
+  ?(direction = Event.Direction.Outbound)
+  cents
+  =
   let a = Rng.pick rng c.home_atms in
   { (base_draft c ~minute) with
     counterparty = sprintf "cp-atm-%03d" a
@@ -202,7 +221,16 @@ let atm rng c ~minute ?(country = None) ?label ?(direction = Event.Direction.Out
   }
 ;;
 
-let transfer c ~minute ?(rail = Event.Rail.Sepa) ?(direction = Event.Direction.Outbound) ?country ?label ~counterparty cents =
+let transfer
+  c
+  ~minute
+  ?(rail = Event.Rail.Sepa)
+  ?(direction = Event.Direction.Outbound)
+  ?country
+  ?label
+  ~counterparty
+  cents
+  =
   { (base_draft c ~minute) with
     counterparty
   ; cp_country = Some (Option.value country ~default:c.residence)
@@ -226,7 +254,13 @@ let normal_activity rng c ~days ~quiet_until =
   let out = ref [] in
   let add d = out := d :: !out in
   let salary_day = Rng.range rng 0 4 in
-  let traveller = Rng.chance rng (match c.persona with Expat -> 0.4 | _ -> 0.08) in
+  let traveller =
+    Rng.chance
+      rng
+      (match c.persona with
+       | Expat -> 0.4
+       | _ -> 0.08)
+  in
   let trip_start = Rng.range rng 5 (Int.max 6 (days - 10)) in
   let trip_country = Rng.pick rng abroad in
   for day = quiet_until to days - 1 do
@@ -238,34 +272,82 @@ let normal_activity rng c ~days ~quiet_until =
       match c.persona with
       | Business -> ()
       | Salaried | Student | Expat ->
-        add (transfer c ~minute:(m 6. 9.) ~direction:Inbound ~counterparty:c.employer c.salary));
-    if day % 30 = (salary_day + 2) % 30 && not (match c.persona with Business -> true | _ -> false)
+        add
+          (transfer
+             c
+             ~minute:(m 6. 9.)
+             ~direction:Inbound
+             ~counterparty:c.employer
+             c.salary));
+    if day % 30 = (salary_day + 2) % 30
+       && not
+            (match c.persona with
+             | Business -> true
+             | _ -> false)
     then add (transfer c ~minute:(m 8. 20.) ~counterparty:c.landlord c.rent);
     if day % 30 = (salary_day + 5) % 30
     then (
-      add (transfer c ~minute:(m 8. 12.) ~rail:Sepa ~counterparty:(sprintf "cp-util-%02d" (c.idx % 40)) (Rng.amount rng ~median:85. ~sigma:0.3));
-      add (transfer c ~minute:(m 8. 12.) ~counterparty:(sprintf "cp-telco-%02d" (c.idx % 7)) (Rng.amount rng ~median:35. ~sigma:0.2));
+      add
+        (transfer
+           c
+           ~minute:(m 8. 12.)
+           ~rail:Sepa
+           ~counterparty:(sprintf "cp-util-%02d" (c.idx % 40))
+           (Rng.amount rng ~median:85. ~sigma:0.3));
+      add
+        (transfer
+           c
+           ~minute:(m 8. 12.)
+           ~counterparty:(sprintf "cp-telco-%02d" (c.idx % 7))
+           (Rng.amount rng ~median:35. ~sigma:0.2));
       if Rng.chance rng 0.4
       then
         add
-          (transfer c ~minute:(m 18. 22.) ~rail:Intraledger ~counterparty:(sprintf "cp-savings-%05d" c.idx) (10_000 * Rng.range rng 1 10)));
+          (transfer
+             c
+             ~minute:(m 18. 22.)
+             ~rail:Intraledger
+             ~counterparty:(sprintf "cp-savings-%05d" c.idx)
+             (10_000 * Rng.range rng 1 10)));
     (match c.persona with
      | Expat when day % 30 = (salary_day + 3) % 30 ->
        let country = Rng.pick rng remittance_countries in
-       add (transfer c ~minute:(m 10. 20.) ~rail:Us_wire ~country ~counterparty:(sprintf "cp-family-%05d" c.idx) (Rng.amount rng ~median:300. ~sigma:0.5))
+       add
+         (transfer
+            c
+            ~minute:(m 10. 20.)
+            ~rail:Us_wire
+            ~country
+            ~counterparty:(sprintf "cp-family-%05d" c.idx)
+            (Rng.amount rng ~median:300. ~sigma:0.5))
      | Business ->
        (* many different clients paying invoices, suppliers paid, the odd large invoice *)
        for _ = 1 to Rng.poisson rng 1.6 do
          let client = sprintf "cp-client-%05d-%d" c.idx (Rng.int rng 60) in
          let cents =
-           if Rng.chance rng 0.04 then Rng.range rng 850_000 990_000 else Rng.amount rng ~median:450. ~sigma:0.9
+           if Rng.chance rng 0.04
+           then Rng.range rng 850_000 990_000
+           else Rng.amount rng ~median:450. ~sigma:0.9
          in
          add (transfer c ~minute:(m 8. 18.) ~direction:Inbound ~counterparty:client cents)
        done;
        if Rng.chance rng 0.35
-       then add (transfer c ~minute:(m 9. 17.) ~counterparty:(sprintf "cp-supplier-%03d" (Rng.int rng 120)) (Rng.amount rng ~median:900. ~sigma:0.8));
+       then
+         add
+           (transfer
+              c
+              ~minute:(m 9. 17.)
+              ~counterparty:(sprintf "cp-supplier-%03d" (Rng.int rng 120))
+              (Rng.amount rng ~median:900. ~sigma:0.8));
        if Rng.chance rng 0.01
-       then add (atm rng c ~minute:(m 10. 16.) ~direction:Inbound (Rng.range rng 30 120 * 10_000))
+       then
+         add
+           (atm
+              rng
+              c
+              ~minute:(m 10. 16.)
+              ~direction:Inbound
+              (Rng.range rng 30 120 * 10_000))
      | Salaried | Student | Expat -> ());
     (* card spending *)
     let spend =
@@ -297,17 +379,39 @@ let normal_activity rng c ~days ~quiet_until =
     if Rng.chance rng 0.12
     then (
       let id, country = Rng.pick rng c.friends in
-      let cents = if Rng.chance rng 0.4 then 1_000 * Rng.range rng 1 20 else Rng.amount rng ~median:45. ~sigma:0.8 in
-      add (transfer c ~minute:(m 9. 23.) ~rail:(if Rng.chance rng 0.5 then Sepa_instant else Sepa) ~country ~counterparty:id cents));
+      let cents =
+        if Rng.chance rng 0.4
+        then 1_000 * Rng.range rng 1 20
+        else Rng.amount rng ~median:45. ~sigma:0.8
+      in
+      add
+        (transfer
+           c
+           ~minute:(m 9. 23.)
+           ~rail:(if Rng.chance rng 0.5 then Sepa_instant else Sepa)
+           ~country
+           ~counterparty:id
+           cents));
     if Rng.chance rng 0.08
     then (
       let id, country = Rng.pick rng c.friends in
-      add (transfer c ~minute:(m 9. 23.) ~direction:Inbound ~country ~counterparty:id (Rng.amount rng ~median:40. ~sigma:0.8)));
+      add
+        (transfer
+           c
+           ~minute:(m 9. 23.)
+           ~direction:Inbound
+           ~country
+           ~counterparty:id
+           (Rng.amount rng ~median:40. ~sigma:0.8)));
     (* the rare big purchase: a car, a deposit; a look-alike for unusual amounts *)
     if Rng.chance rng 0.0006
     then
       add
-        (transfer c ~minute:(m 10. 16.) ~counterparty:(sprintf "cp-dealer-%02d" (Rng.int rng 30)) (Rng.range rng 500_000 2_500_000))
+        (transfer
+           c
+           ~minute:(m 10. 16.)
+           ~counterparty:(sprintf "cp-dealer-%02d" (Rng.int rng 30))
+           (Rng.range rng 500_000 2_500_000))
   done;
   !out
 ;;
@@ -339,58 +443,119 @@ let episode rng c (typology : Typology.t) ~day ~subtle =
       if Rng.chance rng 0.5
       then atm rng c ~minute:(at (day + (i * gap)) (h ())) ~direction:Inbound ?label cents
       else
-        transfer c ~minute:(at (day + (i * gap)) (h ())) ~direction:Inbound ?label
-          ~counterparty:(sprintf "cp-struct-%05d" c.idx) cents)
+        transfer
+          c
+          ~minute:(at (day + (i * gap)) (h ()))
+          ~direction:Inbound
+          ?label
+          ~counterparty:(sprintf "cp-struct-%05d" c.idx)
+          cents)
   | Smurfing ->
     let n = if subtle then 3 else Rng.range rng 5 12 in
     List.init n ~f:(fun i ->
-      transfer c ~minute:(at day (8. +. Float.of_int i)) ~direction:Inbound ?label
-        ~counterparty:(sprintf "cp-smurf-%05d-%d" c.idx i) (Rng.range rng 150_000 450_000))
+      transfer
+        c
+        ~minute:(at day (8. +. Float.of_int i))
+        ~direction:Inbound
+        ?label
+        ~counterparty:(sprintf "cp-smurf-%05d-%d" c.idx i)
+        (Rng.range rng 150_000 450_000))
   | Rapid_movement ->
     let inbound = Rng.range rng 500_000 4_000_000 in
-    let share = if subtle then 0.55 +. (Rng.float rng *. 0.2) else 0.85 +. (Rng.float rng *. 0.15) in
+    let share =
+      if subtle then 0.55 +. (Rng.float rng *. 0.2) else 0.85 +. (Rng.float rng *. 0.15)
+    in
     let start = at day (h ()) in
-    [ transfer c ~minute:start ~direction:Inbound ?label ~counterparty:(sprintf "cp-src-%04d" (Rng.int rng 500)) inbound
-    ; transfer c ~minute:(start +. 10. +. (Rng.float rng *. 120.)) ~rail:(if Rng.chance rng 0.5 then Crypto else Us_wire)
-        ~country:(Rng.pick rng abroad) ?label ~counterparty:(sprintf "cp-exit-%02d" (Rng.int rng 40))
+    [ transfer
+        c
+        ~minute:start
+        ~direction:Inbound
+        ?label
+        ~counterparty:(sprintf "cp-src-%04d" (Rng.int rng 500))
+        inbound
+    ; transfer
+        c
+        ~minute:(start +. 10. +. (Rng.float rng *. 120.))
+        ~rail:(if Rng.chance rng 0.5 then Crypto else Us_wire)
+        ~country:(Rng.pick rng abroad)
+        ?label
+        ~counterparty:(sprintf "cp-exit-%02d" (Rng.int rng 40))
         (Float.iround_nearest_exn (Float.of_int inbound *. share))
     ]
   | Mule_fan_in ->
     let payers = if subtle then 4 else Rng.range rng 5 14 in
     let ins =
       List.init payers ~f:(fun i ->
-        transfer c ~minute:(at (day + (i / 4)) (h ())) ~direction:Inbound ~rail:Sepa_instant ?label
-          ~counterparty:(sprintf "cp-victim-%05d-%d" c.idx i) (Rng.amount rng ~median:700. ~sigma:0.6))
+        transfer
+          c
+          ~minute:(at (day + (i / 4)) (h ()))
+          ~direction:Inbound
+          ~rail:Sepa_instant
+          ?label
+          ~counterparty:(sprintf "cp-victim-%05d-%d" c.idx i)
+          (Rng.amount rng ~median:700. ~sigma:0.6))
     in
     let total = List.sum (module Int) ins ~f:(fun d -> d.cents) in
     let last_in = (payers - 1) / 4 in
     let collector = sprintf "cp-collector-%02d" (Rng.int rng 12) in
     let out =
-      transfer c ~minute:(at (day + last_in) 21.) ~rail:(if Rng.chance rng 0.4 then Crypto else Sepa_instant)
-        ~country:(Rng.pick rng [| "LT"; "EE"; "GB"; "AE" |]) ?label ~counterparty:collector (total * 85 / 100)
+      transfer
+        c
+        ~minute:(at (day + last_in) 21.)
+        ~rail:(if Rng.chance rng 0.4 then Crypto else Sepa_instant)
+        ~country:(Rng.pick rng [| "LT"; "EE"; "GB"; "AE" |])
+        ?label
+        ~counterparty:collector
+        (total * 85 / 100)
     in
     let cash =
-      if Rng.chance rng 0.4 then [ atm rng c ~minute:(at (day + last_in + 1) (h ())) ?label (total * 10 / 100) ] else []
+      if Rng.chance rng 0.4
+      then [ atm rng c ~minute:(at (day + last_in + 1) (h ())) ?label (total * 10 / 100) ]
+      else []
     in
     ins @ (out :: cash)
   | Dormant_reactivation ->
     let inbound = Rng.range rng (if subtle then 200_000 else 600_000) 3_000_000 in
     let start = at day (h ()) in
-    [ transfer c ~minute:start ~direction:Inbound ?label ~counterparty:(sprintf "cp-wake-%05d" c.idx) inbound
-    ; transfer c ~minute:(start +. 600.) ~rail:Us_wire ~country:(Rng.pick rng abroad) ?label
-        ~counterparty:(sprintf "cp-wake-out-%05d" c.idx) (inbound * 9 / 10)
+    [ transfer
+        c
+        ~minute:start
+        ~direction:Inbound
+        ?label
+        ~counterparty:(sprintf "cp-wake-%05d" c.idx)
+        inbound
+    ; transfer
+        c
+        ~minute:(start +. 600.)
+        ~rail:Us_wire
+        ~country:(Rng.pick rng abroad)
+        ?label
+        ~counterparty:(sprintf "cp-wake-out-%05d" c.idx)
+        (inbound * 9 / 10)
     ]
   | High_risk_corridor ->
     let country = Rng.pick rng [| "IR"; "IR"; "MM"; "KP" |] in
     List.init (Rng.range rng 1 3) ~f:(fun i ->
-      transfer c ~minute:(at (day + (i * 3)) (h ())) ~rail:Us_wire ~country ?label
-        ~counterparty:(sprintf "cp-hr-%03d" (Rng.int rng 60)) (Rng.amount rng ~median:(if subtle then 250. else 2_000.) ~sigma:0.6))
+      transfer
+        c
+        ~minute:(at (day + (i * 3)) (h ()))
+        ~rail:Us_wire
+        ~country
+        ?label
+        ~counterparty:(sprintf "cp-hr-%03d" (Rng.int rng 60))
+        (Rng.amount rng ~median:(if subtle then 250. else 2_000.) ~sigma:0.6))
   | Card_testing ->
     let n = if subtle then 3 else Rng.range rng 6 18 in
     let start = at day (h ()) in
     List.init n ~f:(fun i ->
-      { (card rng c ~minute:(start +. (Float.of_int i *. 0.5)) ?label ~cents:(Rng.range rng 50 199)
-           ~declined:(Rng.chance rng 0.45) ())
+      { (card
+           rng
+           c
+           ~minute:(start +. (Float.of_int i *. 0.5))
+           ?label
+           ~cents:(Rng.range rng 50 199)
+           ~declined:(Rng.chance rng 0.45)
+           ())
         with
         channel = Some Online
       ; counterparty = sprintf "cp-merch-%03d" (Rng.int rng merchants)
@@ -401,15 +566,28 @@ let episode rng c (typology : Typology.t) ~day ~subtle =
     let n = if subtle then 4 else Rng.range rng 7 14 in
     let country = if Rng.chance rng 0.5 then Some (Rng.pick rng abroad) else None in
     List.init n ~f:(fun i ->
-      { (atm rng c ~minute:(at day (8. +. Float.of_int i)) ~country ?label (10_000 * Rng.range rng 2 5)) with
+      { (atm
+           rng
+           c
+           ~minute:(at day (8. +. Float.of_int i))
+           ~country
+           ?label
+           (10_000 * Rng.range rng 2 5))
+        with
         counterparty = sprintf "cp-atm-%03d" (Rng.int rng atms)
       })
   | Sanctions_adjacent ->
     let country = Rng.pick rng [| "RU"; "BY" |] in
     List.init (Rng.range rng 1 3) ~f:(fun i ->
       let d =
-        transfer c ~minute:(at (day + (i * 4)) (h ())) ~rail:Us_wire ~country ?label
-          ~counterparty:(sprintf "cp-sa-%03d" (Rng.int rng 40)) (Rng.amount rng ~median:3_000. ~sigma:0.8)
+        transfer
+          c
+          ~minute:(at (day + (i * 4)) (h ()))
+          ~rail:Us_wire
+          ~country
+          ?label
+          ~counterparty:(sprintf "cp-sa-%03d" (Rng.int rng 40))
+          (Rng.amount rng ~median:3_000. ~sigma:0.8)
       in
       if subtle then { d with cp_country = Some "AM"; ip = Some country } else d)
   | Threshold_report | Unusual_amount -> []
@@ -438,8 +616,7 @@ let to_event (cfg : Config.t) customers (d : draft) ~id : labelled =
     ; device_id = d.device
     ; ip_country = Option.map d.ip ~f:country
     ; residence = Some (country c.residence)
-    ; account_opened_at =
-        Some (Time_ns.add cfg.start (Time_ns.Span.of_day c.opened_day))
+    ; account_opened_at = Some (Time_ns.add cfg.start (Time_ns.Span.of_day c.opened_day))
     ; risk_band = Some c.band
     }
   in
@@ -458,27 +635,50 @@ let generate (cfg : Config.t) =
       let day = Rng.range rng 10 (cfg.days - 5) in
       match bad, typology with
       | false, _ ->
-        (* benign look-alike: an account silent for months that wakes up with small payments *)
+        (* benign look-alike: an account silent for months that wakes up with small
+           payments *)
         if Rng.chance rng 0.02
         then (
           let wake = Rng.range rng 10 (cfg.days - 5) in
-          let old = { (transfer c ~minute:(-.Float.of_int (Rng.range rng 200 400) *. 1440.) ~counterparty:c.landlord 5_000) with label = None } in
+          let old =
+            { (transfer
+                 c
+                 ~minute:(-.Float.of_int (Rng.range rng 200 400) *. 1440.)
+                 ~counterparty:c.landlord
+                 5_000)
+              with
+              label = None
+            }
+          in
           old :: normal_activity rng c ~days:cfg.days ~quiet_until:wake)
         else normal_activity rng c ~days:cfg.days ~quiet_until:0
       | true, Dormant_reactivation ->
         let c = { c with opened_day = -.Float.of_int (Rng.range rng 400 1500) } in
         customers.(c.idx) <- c;
-        let old = transfer c ~minute:(-.Float.of_int (Rng.range rng 200 360) *. 1440.) ~counterparty:c.landlord 4_000 in
-        old :: (episode rng c Dormant_reactivation ~day ~subtle @ normal_activity rng c ~days:cfg.days ~quiet_until:(day + 1))
+        let old =
+          transfer
+            c
+            ~minute:(-.Float.of_int (Rng.range rng 200 360) *. 1440.)
+            ~counterparty:c.landlord
+            4_000
+        in
+        old
+        :: (episode rng c Dormant_reactivation ~day ~subtle
+            @ normal_activity rng c ~days:cfg.days ~quiet_until:(day + 1))
       | true, Mule_fan_in ->
         (* mules open accounts shortly before they are used *)
         let c = { c with opened_day = Float.of_int (day - Rng.range rng 5 40) } in
         customers.(c.idx) <- c;
         episode rng c Mule_fan_in ~day ~subtle
-        @ (normal_activity rng c ~days:cfg.days ~quiet_until:(Int.max 0 (Float.to_int c.opened_day))
+        @ (normal_activity
+             rng
+             c
+             ~days:cfg.days
+             ~quiet_until:(Int.max 0 (Float.to_int c.opened_day))
            |> List.filter ~f:(fun _ -> Rng.chance rng 0.3))
       | true, typology ->
-        episode rng c typology ~day ~subtle @ normal_activity rng c ~days:cfg.days ~quiet_until:0)
+        episode rng c typology ~day ~subtle
+        @ normal_activity rng c ~days:cfg.days ~quiet_until:0)
   in
   List.filter drafts ~f:(fun d -> d.cents > 0)
   |> List.stable_sort ~compare:(fun a b -> Float.compare a.minute b.minute)
@@ -489,7 +689,12 @@ let to_json_line { event; label } =
   match Event.to_json event with
   | `Assoc fields ->
     Yojson.Safe.to_string
-      (`Assoc (fields @ [ "label", Option.value_map label ~default:`Null ~f:(fun t -> `String (Typology.name t)) ]))
+      (`Assoc
+        (fields
+         @ [ ( "label"
+             , Option.value_map label ~default:`Null ~f:(fun t ->
+                 `String (Typology.name t)) )
+           ]))
   | json -> Yojson.Safe.to_string json
 ;;
 

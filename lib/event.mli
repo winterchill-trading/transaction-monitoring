@@ -132,7 +132,8 @@ module Stable : sig
       ; mcc : Risk_rules.Mcc.Stable.V1.t option
       ; card_channel : Card_channel.Stable.V1.t option
       ; declined : bool (** a declined authorisation or a rejected payment attempt *)
-      ; device_id : string option (** hashed device fingerprint for customer-initiated events *)
+      ; device_id : string option
+      (** hashed device fingerprint for customer-initiated events *)
       ; ip_country : Risk_rules.Country.Stable.V1.t option
       ; residence : Risk_rules.Country.Stable.V1.t option (** the customer's country *)
       ; account_opened_at : Time_ns.Stable.Alternate_sexp.V1.t option
@@ -180,11 +181,9 @@ val validate : t -> t Or_error.t
 (** {2 JSON lines}
 
     One flat object per line, as written by [transaction-monitoring generate]:
-    [{"id", "customer", "account", "counterparty", "counterparty_country", "rail",
-    "direction", "amount": "12.34 EUR", "base_amount", "occurred_at" (RFC 3339 UTC),
-    "received_at", "mcc", "card_channel", "declined", "device_id", "ip_country",
-    "residence", "account_opened_at", "risk_band"}]. Optional fields may be absent or
-    [null]; unknown fields (such as a training [label]) are ignored. *)
+    [{"id", "customer", "account", "counterparty", "counterparty_country", "rail", "direction", "amount": "12.34 EUR", "base_amount", "occurred_at" (RFC 3339 UTC), "received_at", "mcc", "card_channel", "declined", "device_id", "ip_country", "residence", "account_opened_at", "risk_band"}].
+    Optional fields may be absent or [null]; unknown fields (such as a training [label])
+    are ignored. *)
 
 val to_json : t -> Yojson.Safe.t
 val of_json : Yojson.Safe.t -> t Or_error.t

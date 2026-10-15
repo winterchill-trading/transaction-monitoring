@@ -20,7 +20,12 @@ let create ~width ~buckets ~fields =
   let width = Time_ns.Span.to_int_ns width in
   if width <= 0 || buckets <= 0 || fields <= 0
   then
-    raise_s [%message "Window.create: positive sizes required" (width : int) (buckets : int) (fields : int)];
+    raise_s
+      [%message
+        "Window.create: positive sizes required"
+          (width : int)
+          (buckets : int)
+          (fields : int)];
   { width; buckets; fields; head = -1; data = Array.create ~len:(buckets * fields) 0 }
 ;;
 

@@ -63,7 +63,9 @@ let commit t (c : Store.Commit.t) =
     return (Ok Store.Commit_result.Committed)
 ;;
 
-let load_customer t id = return (Ok (Option.map (Hashtbl.find t.customers id) ~f:copy_customer))
+let load_customer t id =
+  return (Ok (Option.map (Hashtbl.find t.customers id) ~f:copy_customer))
+;;
 
 let load_counterparty t id =
   return (Ok (Option.map (Hashtbl.find t.counterparties id) ~f:copy_counterparty))
@@ -106,7 +108,9 @@ let decisions ?customer t =
   |> List.sort ~compare:(fun (a : Decision.t) b ->
     match Time_ns.compare a.decided_at b.decided_at with
     | 0 ->
-      String.compare (Ids.Event_id.to_string a.event_id) (Ids.Event_id.to_string b.event_id)
+      String.compare
+        (Ids.Event_id.to_string a.event_id)
+        (Ids.Event_id.to_string b.event_id)
     | c -> c)
   |> Or_error.return
   |> return
@@ -128,20 +132,25 @@ let current_model t =
 ;;
 
 let close _ = return ()
-let store t = Store.T ((module struct
-  type nonrec t = t
 
-  let kind = kind
-  let find_decision = find_decision
-  let commit = commit
-  let load_customer = load_customer
-  let load_counterparty = load_counterparty
-  let find_alert = find_alert
-  let update_alert = update_alert
-  let alerts = alerts
-  let alert_events = alert_events
-  let decisions = decisions
-  let record_model = record_model
-  let current_model = current_model
-  let close = close
-end), t)
+let store t =
+  Store.T
+    ( (module struct
+        type nonrec t = t
+
+        let kind = kind
+        let find_decision = find_decision
+        let commit = commit
+        let load_customer = load_customer
+        let load_counterparty = load_counterparty
+        let find_alert = find_alert
+        let update_alert = update_alert
+        let alerts = alerts
+        let alert_events = alert_events
+        let decisions = decisions
+        let record_model = record_model
+        let current_model = current_model
+        let close = close
+      end)
+    , t )
+;;

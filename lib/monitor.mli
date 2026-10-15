@@ -2,17 +2,16 @@
 
     For each event: return the stored decision if the event id was decided before
     (idempotent across redeliveries and restarts); otherwise load the customer's and the
-    counterparty's profiles (cache, then store, then empty), decide with the
-    {!Evaluator}, fold the event into the profiles, and commit event, decision, alert
-    and both snapshots to the store in one write; then hand the decision to
-    [on_decision] and return it.
+    counterparty's profiles (cache, then store, then empty), decide with the {!Evaluator},
+    fold the event into the profiles, and commit event, decision, alert and both snapshots
+    to the store in one write; then hand the decision to [on_decision] and return it.
 
-    Backpressure: events are processed one at a time in arrival order (profiles must
-    see events in order, and the work is tens of microseconds plus one store write).
-    At most [max_pending] events wait; beyond that [on_event] answers [Overloaded] at
-    once, and the caller applies its own fail-closed choice (hold the payment, retry
-    the inbound booking later). [on_decision] is awaited before the next event starts,
-    so a slow consumer slows intake instead of growing a buffer.
+    Backpressure: events are processed one at a time in arrival order (profiles must see
+    events in order, and the work is tens of microseconds plus one store write). At most
+    [max_pending] events wait; beyond that [on_event] answers [Overloaded] at once, and
+    the caller applies its own fail-closed choice (hold the payment, retry the inbound
+    booking later). [on_decision] is awaited before the next event starts, so a slow
+    consumer slows intake instead of growing a buffer.
 
     Profiles stay in an LRU cache of [cache_capacity] customers and counterparties; a
     failed or duplicate commit evicts the two profiles it touched so they are reloaded
@@ -34,8 +33,8 @@ end
 
 type t
 
-(** Records the evaluator's model (name, version, policy) in the store as activated
-    [now], if it has one. *)
+(** Records the evaluator's model (name, version, policy) in the store as activated [now],
+    if it has one. *)
 val create
   :  ?cache_capacity:int (** default 100 000 *)
   -> ?max_pending:int (** default 10 000 *)
@@ -50,8 +49,8 @@ val on_event : t -> Event.t -> Reply.t Or_error.t Deferred.t
 (** Events accepted and not yet finished. *)
 val pending : t -> int
 
-(** Loads the alert, applies the command, stores the result over the version it read;
-    on a concurrent update it retries once on the fresh alert. *)
+(** Loads the alert, applies the command, stores the result over the version it read; on a
+    concurrent update it retries once on the fresh alert. *)
 val apply_alert
   :  t
   -> Ids.Alert_id.t

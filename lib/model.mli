@@ -20,6 +20,6 @@ val thresholds : t -> Risk_models.Scorer.Thresholds.t option
 (** Calibrated score in \[0, 1\]; allocates nothing. *)
 val score : t -> float array -> float
 
-(** Calibrated score with the top three reasons (features and their contribution to
-    the log-odds). *)
+(** Calibrated score with the top three reasons (features and their contribution to the
+    log-odds). *)
 val explain : t -> float array -> float * (string * float) list

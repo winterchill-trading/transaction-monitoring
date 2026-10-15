@@ -14,14 +14,21 @@ let new_monitor ?max_pending ?on_decision ?cache_capacity store =
 let show_reply r =
   match (r : Monitor.Reply.t) with
   | Decided d -> sprintf "decided %s" (Decision.Outcome.to_string d.outcome)
-  | Already_decided d -> sprintf "already decided %s" (Decision.Outcome.to_string d.outcome)
+  | Already_decided d ->
+    sprintf "already decided %s" (Decision.Outcome.to_string d.outcome)
   | Overloaded -> "overloaded"
 ;;
 
 let%expect_test "idempotent per event id; alerts reach the review queue" =
   let store = Store_memory.store (Store_memory.create ()) in
   let seen = ref [] in
-  let%bind m = new_monitor ~on_decision:(fun d -> seen := d.event_id :: !seen; return ()) store in
+  let%bind m =
+    new_monitor
+      ~on_decision:(fun d ->
+        seen := d.event_id :: !seen;
+        return ())
+      store
+  in
   let e = event ~id:"pay-1" ~counterparty_country:"IR" ~at:t0 50_000 in
   let%bind r1 = Monitor.on_event m e >>| ok in
   let%bind r2 = Monitor.on_event m e >>| ok in
@@ -32,19 +39,29 @@ let%expect_test "idempotent per event id; alerts reach the review queue" =
   print_s [%message "queue" ~_:(List.map queue ~f:(fun a -> a.id) : Ids.Alert_id.t list)];
   let id = (List.hd_exn queue).id in
   let%bind _ =
-    Monitor.apply_alert m id (Assign { analyst = Ids.Analyst_id.of_string "ana"; at = at_min 5. }) >>| ok
+    Monitor.apply_alert
+      m
+      id
+      (Assign { analyst = Ids.Analyst_id.of_string "ana"; at = at_min 5. })
+    >>| ok
   in
   let%bind closed =
     Monitor.apply_alert
       m
       id
-      (Close { by = Ids.Analyst_id.of_string "ana"; verdict = False_positive; note = "family transfer, documented"; at = at_min 9. })
+      (Close
+         { by = Ids.Analyst_id.of_string "ana"
+         ; verdict = False_positive
+         ; note = "family transfer, documented"
+         ; at = at_min 9.
+         })
     >>| ok
   in
   print_endline (Alert.Status.to_string (fst closed).Alert.status);
   let%map queue = Monitor.review_queue m >>| ok in
   printf "open after closing: %d\n" (List.length queue);
-  [%expect {|
+  [%expect
+    {|
     decided hold
     already decided hold
     (emitted (pay-1))
@@ -67,7 +84,8 @@ let%expect_test "overload is reported, not buffered" =
   Ivar.fill_exn gate ();
   let%map replies = Deferred.all replies in
   List.iter replies ~f:(fun r -> print_endline (show_reply (ok r)));
-  [%expect {|
+  [%expect
+    {|
     pending 2
     decided allow
     decided allow
@@ -81,7 +99,8 @@ let%expect_test "overload is reported, not buffered" =
    uninterrupted in-memory replay: profiles survive through the store. *)
 let restart_equals_replay store_of =
   let events =
-    Synthetic.generate { Synthetic.Config.default with customers = 60; days = 20; bad_share = 0.3 }
+    Synthetic.generate
+      { Synthetic.Config.default with customers = 60; days = 20; bad_share = 0.3 }
     |> List.map ~f:(fun l -> l.event)
   in
   let expected =
@@ -93,7 +112,9 @@ let restart_equals_replay store_of =
   let half = List.length events / 2 in
   let run monitor events =
     Deferred.List.map ~how:`Sequential events ~f:(fun e ->
-      Monitor.on_event monitor e >>| ok >>| fun r -> Option.value_exn (Monitor.Reply.decision r))
+      Monitor.on_event monitor e
+      >>| ok
+      >>| fun r -> Option.value_exn (Monitor.Reply.decision r))
   in
   let%bind first = new_monitor ~cache_capacity:10 store in
   let%bind a = run first (List.take events half) in
@@ -108,7 +129,9 @@ let restart_equals_replay store_of =
 ;;
 
 let%expect_test "restart on the memory store" =
-  let%map () = restart_equals_replay (fun () -> return (Store_memory.store (Store_memory.create ()))) in
+  let%map () =
+    restart_equals_replay (fun () -> return (Store_memory.store (Store_memory.create ())))
+  in
   [%expect {| 2798 events, 74 alerts, equal to an uninterrupted replay: true |}]
 ;;
 

@@ -3,16 +3,16 @@
     versions put in service.
 
     Two implementations: {!Store_memory} (tests, replays, single-process demos) and
-    {!Store_pg} (PostgreSQL through pg-async, its own schema [transaction_monitoring]).
-    No SQL or table name exists outside [store_pg.ml] and [migrations/]; the conformance
+    {!Store_pg} (PostgreSQL through pg-async, its own schema [transaction_monitoring]). No
+    SQL or table name exists outside [store_pg.ml] and [migrations/]; the conformance
     suite in [test/] runs the same scenarios against both.
 
-    Writes are keyed and idempotent. {!S.commit} stores an event's decision, its alert
-    and both profile snapshots in one transaction, keyed by event id: a second commit of
-    the same event id writes nothing and returns the decision already stored. A profile
+    Writes are keyed and idempotent. {!S.commit} stores an event's decision, its alert and
+    both profile snapshots in one transaction, keyed by event id: a second commit of the
+    same event id writes nothing and returns the decision already stored. A profile
     snapshot only replaces a stored one with fewer events, so a slow writer cannot roll a
-    profile back. Alert updates are optimistic: they apply only over the version they
-    were computed from. Reads never assume they see another instance's latest write. *)
+    profile back. Alert updates are optimistic: they apply only over the version they were
+    computed from. Reads never assume they see another instance's latest write. *)
 
 open! Core
 open! Async

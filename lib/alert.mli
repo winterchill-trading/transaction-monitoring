@@ -10,10 +10,10 @@
     v}
 
     Rules: only the assignee flags, unflags or closes; a SAR candidate cannot be closed as
-    a false positive until the flag is withdrawn with a reason; a closed alert is
-    reopened only by an analyst other than the one who closed it (four eyes). Repeating a
-    command that changes nothing (assigning the current assignee) returns no events.
-    Alerts are never shown to the customer. *)
+    a false positive until the flag is withdrawn with a reason; a closed alert is reopened
+    only by an analyst other than the one who closed it (four eyes). Repeating a command
+    that changes nothing (assigning the current assignee) returns no events. Alerts are
+    never shown to the customer. *)
 
 open! Core
 

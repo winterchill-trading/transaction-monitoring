@@ -5,15 +5,15 @@
     The population mixes salaried customers, students, small businesses (many payers in,
     suppliers out, invoices near 10 000) and expatriates (remittances abroad, travel,
     foreign cash), with salaries, rent, bills, card spending at a shared pool of
-    merchants, ATM withdrawals, payments between friends and transfers to savings. A
-    share of customers each carries one typology episode: structuring, smurfing, rapid
-    movement, mule fan-in (with shared collector accounts), dormant reactivation, a
-    higher-risk corridor, card testing, ATM cash runs, or sanctions-adjacent payments.
-    About a third of the episodes are deliberately subtle (fewer payments, longer gaps)
-    and stay under the default rule thresholds, and the benign population includes look-
-    alikes (business fan-in, near-threshold invoices, large one-off purchases, travel
-    cash, dormant accounts that wake up with small payments), so neither rules nor model
-    see a clean separation.
+    merchants, ATM withdrawals, payments between friends and transfers to savings. A share
+    of customers each carries one typology episode: structuring, smurfing, rapid movement,
+    mule fan-in (with shared collector accounts), dormant reactivation, a higher-risk
+    corridor, card testing, ATM cash runs, or sanctions-adjacent payments. About a third
+    of the episodes are deliberately subtle (fewer payments, longer gaps) and stay under
+    the default rule thresholds, and the benign population includes look- alikes (business
+    fan-in, near-threshold invoices, large one-off purchases, travel cash, dormant
+    accounts that wake up with small payments), so neither rules nor model see a clean
+    separation.
 
     The same seed and config always give the same events, on every platform. *)
 

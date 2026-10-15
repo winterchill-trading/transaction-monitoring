@@ -21,7 +21,13 @@ let sample =
   context
     [ event ~direction:Inbound ~counterparty:"employer" ~at:(at_min 0.) 320_000
     ; event ~counterparty:"landlord" ~counterparty_country:"DE" ~at:(at_min 60.) 95_000
-    ; event ~rail:Card ~card_channel:Online ~counterparty:"shop" ~device_id:"d1" ~at:(at_min 120.) 4_500
+    ; event
+        ~rail:Card
+        ~card_channel:Online
+        ~counterparty:"shop"
+        ~device_id:"d1"
+        ~at:(at_min 120.)
+        4_500
     ]
     (event
        ~counterparty:"friend"
@@ -40,14 +46,21 @@ let%test_unit "extra names match the extras" =
 
 let%expect_test "schema" =
   let s = Features.schema in
-  printf "%s v%d, %d features, digest %s\n" s.name s.version (Risk_models.Schema.length s) s.digest;
-  [%expect {| transaction-monitoring-features v1, 76 features, digest c843b98a225cad232323fe62b44bc795 |}]
+  printf
+    "%s v%d, %d features, digest %s\n"
+    s.name
+    s.version
+    (Risk_models.Schema.length s)
+    s.digest;
+  [%expect
+    {| transaction-monitoring-features v1, 76 features, digest c843b98a225cad232323fe62b44bc795 |}]
 ;;
 
 let%expect_test "a feature vector (present values only)" =
   List.iter (Features.to_named config sample) ~f:(fun (name, v) ->
-    if not (Float.is_nan v) && Float.(v <> 0.) then printf "%s %g\n" name v);
-  [%expect {|
+    if (not (Float.is_nan v)) && Float.(v <> 0.) then printf "%s %g\n" name v);
+  [%expect
+    {|
     amount 500
     amount_is_round 1
     out_count_24h 2

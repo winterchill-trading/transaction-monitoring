@@ -27,7 +27,9 @@ let risk_rules (ctx : Context.t) : F.t =
   let outbound = Context.is_outbound ctx in
   let now = c.now in
   let mean_out_30d =
-    if c.out_n_30d = 0 then None else Some (major c.out_sum_30d /. Float.of_int c.out_n_30d)
+    if c.out_n_30d = 0
+    then None
+    else Some (major c.out_sum_30d /. Float.of_int c.out_n_30d)
   in
   let ofday = Time_ns.to_ofday now ~zone:Time_float.Zone.utc in
   let weekday = Date.day_of_week (Time_ns.to_date now ~zone:Time_float.Zone.utc) in
@@ -70,14 +72,18 @@ let risk_rules (ctx : Context.t) : F.t =
        | _ -> None)
   ; hours_since_credentials_change = None
   ; account_age_days = Option.map (Context.account_age ctx) ~f:days
-  ; hour_of_day_utc = Time_ns.Ofday.to_span_since_start_of_day ofday |> Time_ns.Span.to_hr |> Float.iround_down_exn
+  ; hour_of_day_utc =
+      Time_ns.Ofday.to_span_since_start_of_day ofday
+      |> Time_ns.Span.to_hr
+      |> Float.iround_down_exn
   ; log1p_amount = Float.log1p amount
   ; is_weekend = Day_of_week.is_sun_or_sat weekday
   ; out_count_7d = c.out_n_7d
   ; out_sum_1h = major c.out_sum_1h
   ; out_sum_7d = major c.out_sum_7d
   ; amount_over_mean_30d =
-      Option.bind mean_out_30d ~f:(fun m -> if Float.(m > 0.) then Some (amount /. m) else None)
+      Option.bind mean_out_30d ~f:(fun m ->
+        if Float.(m > 0.) then Some (amount /. m) else None)
   ; in_distinct_senders_24h = c.senders_24h
   ; minutes_since_last_inbound =
       Option.map c.last_inbound ~f:(fun t -> Time_ns.Span.to_min (Time_ns.diff now t))
@@ -118,7 +124,8 @@ let extras (config : Rules.Config.t) (ctx : Context.t) =
     , flag
         (listed config.sanctions_adjacent_countries e.counterparty_country
          || listed config.sanctions_adjacent_countries e.ip_country) )
-  ; "amount_over_p95", opt_float (fun p -> if Float.(p > 0.) then amount /. p else Float.nan) c.out_p95
+  ; ( "amount_over_p95"
+    , opt_float (fun p -> if Float.(p > 0.) then amount /. p else Float.nan) c.out_p95 )
   ; ( "amount_log_z"
     , match c.out_log_mean, c.out_log_sd with
       | Some m, Some sd when Float.(sd > 0.) -> (Float.log1p amount -. m) /. sd

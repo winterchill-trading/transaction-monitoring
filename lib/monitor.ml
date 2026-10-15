@@ -14,10 +14,9 @@ module Reply = struct
   ;;
 end
 
-(* A small LRU over Hash_queue: lookups move the key to the back, inserts evict from
-   the front. *)
+(* A small LRU over Hash_queue: lookups move the key to the back, inserts evict from the
+   front. *)
 module Lru (Q : Hash_queue.S) = struct
-
   type 'v t =
     { queue : 'v Q.t
     ; capacity : int
@@ -56,12 +55,12 @@ let evaluator t = t.evaluator
 let pending t = t.pending
 
 let create
-      ?(cache_capacity = 100_000)
-      ?(max_pending = 10_000)
-      ?(on_decision = fun _ -> return ())
-      ~now
-      ~store
-      evaluator
+  ?(cache_capacity = 100_000)
+  ?(max_pending = 10_000)
+  ?(on_decision = fun _ -> return ())
+  ~now
+  ~store
+  evaluator
   =
   let open Deferred.Or_error.Let_syntax in
   let (Store.T ((module S), s)) = store in

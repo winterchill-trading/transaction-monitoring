@@ -64,7 +64,8 @@ let%expect_test "refusals" =
       match Event.of_json json with
       | Ok _ -> print_endline "accepted"
       | Error e -> print_s [%sexp (e : Error.t)]);
-  [%expect {|
+  [%expect
+    {|
     ((event pay-42) (("in field" rail) ("unknown value" (kind rail) telex)))
     ((event pay-42) ("negative base amount" (event pay-42)))
     ((event pay-42)
@@ -78,7 +79,8 @@ let%expect_test "stable digests" =
   print_endline [%bin_digest: Event.Stable.V1.t];
   print_endline [%bin_digest: Profile.Customer.Stable.Snapshot.V1.t];
   print_endline [%bin_digest: Profile.Counterparty.Stable.Snapshot.V1.t];
-  [%expect {|
+  [%expect
+    {|
     0c95d0f134f6375588f2ecc6201bef52
     dbcac0d438177b0cbdd404e81076a707
     46c4fde5fa46d50754e68a89d3113c7b

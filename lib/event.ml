@@ -1,7 +1,7 @@
 open! Core
 
-(* A small helper for the enumerations below: one table gives both directions of the
-   text form, so [of_string] can never disagree with [to_string]. *)
+(* A small helper for the enumerations below: one table gives both directions of the text
+   form, so [of_string] can never disagree with [to_string]. *)
 module Text_enum (T : sig
     type t [@@deriving enumerate]
 
@@ -247,7 +247,8 @@ let required json name f =
 let optional json name f =
   match field json name with
   | None -> Ok None
-  | Some v -> Or_error.tag_s (f v) ~tag:[%message "in field" name] |> Or_error.map ~f:Option.some
+  | Some v ->
+    Or_error.tag_s (f v) ~tag:[%message "in field" name] |> Or_error.map ~f:Option.some
 ;;
 
 let string_of = function
@@ -255,7 +256,10 @@ let string_of = function
   | j -> Or_error.error_s [%message "expected a string" ~got:(Yojson.Safe.to_string j)]
 ;;
 
-let parse f j = Or_error.bind (string_of j) ~f:(fun s -> Or_error.try_with (fun () -> f s))
+let parse f j =
+  Or_error.bind (string_of j) ~f:(fun s -> Or_error.try_with (fun () -> f s))
+;;
+
 let parse_or_error f j = Or_error.bind (string_of j) ~f
 
 (* RFC 3339 with a zone ("2026-01-01T10:00:00Z", "+00:00") or a bare UTC time. *)
@@ -304,7 +308,9 @@ let of_json json =
        | j -> Or_error.error_s [%message "expected a bool" ~got:(Yojson.Safe.to_string j)])
    in
    let%bind device_id = optional json "device_id" string_of in
-   let%bind ip_country = optional json "ip_country" (parse Risk_rules.Country.of_string) in
+   let%bind ip_country =
+     optional json "ip_country" (parse Risk_rules.Country.of_string)
+   in
    let%bind residence = optional json "residence" (parse Risk_rules.Country.of_string) in
    let%bind account_opened_at =
      optional json "account_opened_at" (parse_or_error time_of_string)

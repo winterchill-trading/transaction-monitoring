@@ -13,11 +13,14 @@ let%expect_test "a new model replayed next to the rules-only baseline" =
     |> Or_error.ok_exn
   in
   let replay = Replay.create ~baseline ~max_changes:3 candidate in
-  Synthetic.generate { Synthetic.Config.default with customers = 150; days = 40; bad_share = 0.2 }
+  Synthetic.generate
+    { Synthetic.Config.default with customers = 150; days = 40; bad_share = 0.2 }
   |> List.iter ~f:(fun (l : Synthetic.labelled) ->
     ignore (Replay.step ?label:l.label replay l.event : Decision.t));
   let r = Replay.report replay in
-  let side (s : Replay.Side.t) = s.decisions, s.hold + s.block, s.labelled, s.labelled_alerted in
+  let side (s : Replay.Side.t) =
+    s.decisions, s.hold + s.block, s.labelled, s.labelled_alerted
+  in
   print_s
     [%message
       ""
@@ -27,7 +30,8 @@ let%expect_test "a new model replayed next to the rules-only baseline" =
         ~new_alerts:(r.new_alerts : int)
         ~cleared:(r.cleared_alerts : int)
         ~sample:(List.length r.sample_changes : int)];
-  [%expect {|
+  [%expect
+    {|
     ((candidate (14756 911 103 103)) (baseline (14756 265 103 62)) (changed 688)
      (new_alerts 646) (cleared 0) (sample 3))
     |}]

@@ -34,7 +34,8 @@ type t = Stable.V1.t =
   | Atm_cash (** many or large ATM operations in a day *)
   | Sanctions_adjacent
   (** payments touching a jurisdiction under sectoral restrictive measures *)
-  | Threshold_report (** cash at or above the reporting threshold: report, not suspicion *)
+  | Threshold_report
+  (** cash at or above the reporting threshold: report, not suspicion *)
   | Unusual_amount (** far above the customer's own outgoing amounts *)
 [@@deriving sexp, compare, equal, hash, enumerate, quickcheck]
 
@@ -44,9 +45,9 @@ val name : t -> string
 
 val of_name : string -> t option
 
-(** The risk-rules reason code: the built-in one where risk-rules has it
-    ([STRUCTURING], [MULE_PASS_THROUGH], [MULE_FAN_IN], [CARD_TESTING], [GEO_HIGH_RISK]),
-    otherwise [CUSTOM_TM_<NAME>]. *)
+(** The risk-rules reason code: the built-in one where risk-rules has it ([STRUCTURING],
+    [MULE_PASS_THROUGH], [MULE_FAN_IN], [CARD_TESTING], [GEO_HIGH_RISK]), otherwise
+    [CUSTOM_TM_<NAME>]. *)
 val code : t -> Risk_rules.Reason_code.t
 
 (** The closest risk-rules typology, for hits and audit grouping. *)

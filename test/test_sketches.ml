@@ -1,7 +1,9 @@
 open! Core
 open Transaction_monitoring
 
-let%expect_test "window: bucket-aligned sums, skipped buckets cleared, late values ignored" =
+let%expect_test "window: bucket-aligned sums, skipped buckets cleared, late values \
+                 ignored"
+  =
   let w = Window.create ~width:(Time_ns.Span.of_min 5.) ~buckets:3 ~fields:1 in
   let at m = Fixtures.at_min m in
   let show now = printf "%d " (Window.total w ~now:(at now) ~field:0) in
@@ -32,7 +34,10 @@ let%test_unit "P-square stays close to the exact quantile on skewed data" =
         (* log-normal amounts, like payment amounts *)
         let u1 = Random.State.float rng 1. +. 1e-12
         and u2 = Random.State.float rng 1. in
-        Float.exp (4. +. (1.2 *. Float.sqrt (-2. *. Float.log u1) *. Float.cos (2. *. Float.pi *. u2))))
+        Float.exp
+          (4.
+           +. (1.2 *. Float.sqrt (-2. *. Float.log u1) *. Float.cos (2. *. Float.pi *. u2))
+          ))
     in
     Array.iter xs ~f:(P2_quantile.add sketch);
     Array.sort xs ~compare:Float.compare;
@@ -40,7 +45,8 @@ let%test_unit "P-square stays close to the exact quantile on skewed data" =
     let estimate = Option.value_exn (P2_quantile.estimate sketch) in
     (* P-square is an approximation; within 5% of the exact value on 5 000 samples *)
     if Float.(abs (estimate - exact) > 0.05 * exact)
-    then raise_s [%message "estimate too far" (p : float) (estimate : float) (exact : float)])
+    then
+      raise_s [%message "estimate too far" (p : float) (estimate : float) (exact : float)])
 ;;
 
 let%test_unit "P-square estimate lies within the range seen" =
@@ -70,7 +76,8 @@ let%expect_test "recent: evicts the least recently seen key when full" =
     (Recent.count_since r ~since:(at 1.) ~inbound:true)
     (Recent.count_since r ~since:(at 0.) ~inbound:false);
   print_s [%sexp (Recent.first_seen r "a" : Time_ns.Alternate_sexp.t option)];
-  [%expect {|
+  [%expect
+    {|
     (d a c)
     inbound since 1: 2, outbound since 0: 1
     ("2026-03-02 09:00:00Z")

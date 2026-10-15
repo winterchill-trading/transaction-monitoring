@@ -8,7 +8,8 @@ let%expect_test "postgres store conformance" =
   print_s [%message "migrations" ~_:(Store_pg.applied_migrations store : int list)];
   let%bind () = Store_conformance.run (Store_pg.store store) in
   let%map () = Store_pg.close store in
-  [%expect {|
+  [%expect
+    {|
     (migrations (1))
     (commit (event e1) (r Committed))
     (commit (event e2) (r Committed))

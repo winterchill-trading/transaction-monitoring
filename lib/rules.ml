@@ -74,7 +74,8 @@ module Config = struct
     in
     if List.is_empty errors
     then Ok t
-    else Error (Error.create_s [%message "invalid rules config" ~_:(errors : Sexp.t list)])
+    else
+      Error (Error.create_s [%message "invalid rules config" ~_:(errors : Sexp.t list)])
   ;;
 
   let load path =
@@ -106,7 +107,9 @@ let create (typology : Typology.t) ~severity check =
 
 let structuring (c : Config.t) =
   let p = c.profile in
-  let floor = p.reporting_threshold - (p.reporting_threshold * p.below_threshold_bps / 10_000) in
+  let floor =
+    p.reporting_threshold - (p.reporting_threshold * p.below_threshold_bps / 10_000)
+  in
   create Structuring ~severity:Review (fun (ctx : Context.t) ->
     if ctx.amount >= floor && ctx.amount < p.reporting_threshold
     then (
@@ -197,7 +200,9 @@ let mule_fan_in (c : Config.t) =
         | Some age -> Time_ns.Span.(age < c.mule_max_account_age)
         | None -> false
       in
-      let drains = (ctx.customer.out_sum_24h + ctx.amount) * 2 >= ctx.customer.in_sum_7d in
+      let drains =
+        (ctx.customer.out_sum_24h + ctx.amount) * 2 >= ctx.customer.in_sum_7d
+      in
       let collector = ctx.counterparty.payers_7d + 1 in
       (* A payee the bank first saw within two weeks: billers, merchants and landlords
          paid by many customers have a long history. Card payments never count. *)
@@ -223,7 +228,8 @@ let mule_fan_in (c : Config.t) =
             ; "payees_24h", Int.to_string payees
             ; "inbound_7d", money ctx.customer.in_sum_7d
             ; ( "account_age"
-              , Option.value_map (Context.account_age ctx) ~default:"unknown" ~f:span_days )
+              , Option.value_map (Context.account_age ctx) ~default:"unknown" ~f:span_days
+              )
             ] )
       else if (not card) && new_payee && collector >= c.mule_collector_min_customers
       then
@@ -284,7 +290,8 @@ let card_testing (c : Config.t) =
       then
         Some
           ( sprintf "%d small and %d declined card attempts in 10-15min" small declines
-          , [ "small_10m", Int.to_string small; "declined_10m", Int.to_string declines ] )
+          , [ "small_10m", Int.to_string small; "declined_10m", Int.to_string declines ]
+          )
       else None
     | Sepa
     | Sepa_instant
@@ -333,10 +340,7 @@ let sanctions_adjacent (c : Config.t) =
     then None
     else
       Some
-        ( sprintf
-            "%s touches %s"
-            (money ctx.amount)
-            (List.map hits ~f:snd |> country_list)
+        ( sprintf "%s touches %s" (money ctx.amount) (List.map hits ~f:snd |> country_list)
         , List.map hits ~f:(fun (k, c) -> k, Country.to_string c) ))
 ;;
 
@@ -349,7 +353,10 @@ let threshold_report (c : Config.t) =
       if sum >= threshold
       then
         Some
-          ( sprintf "cash %s in 24h reaches the reporting threshold %s" (money sum) (money threshold)
+          ( sprintf
+              "cash %s in 24h reaches the reporting threshold %s"
+              (money sum)
+              (money threshold)
           , [ "cash_24h", money sum; "threshold", money threshold ] )
       else None)
     else None)
@@ -366,7 +373,11 @@ let unusual_amount (c : Config.t) =
       if Float.(amount >= c.unusual_multiple * p95)
       then
         Some
-          ( sprintf "%s is %.1fx the customer's p95 of %.2f" (money ctx.amount) (amount /. p95) p95
+          ( sprintf
+              "%s is %.1fx the customer's p95 of %.2f"
+              (money ctx.amount)
+              (amount /. p95)
+              p95
           , [ "amount", money ctx.amount
             ; "p95", sprintf "%.2f" p95
             ; "multiple", sprintf "%.1f" (amount /. p95)
@@ -396,7 +407,8 @@ let all (c : Config.t) =
     then None
     else (
       let r = rule c t in
-      Some (if List.mem c.shadow t ~equal:Typology.equal then Rule.cap r ~max:Allow else r)))
+      Some
+        (if List.mem c.shadow t ~equal:Typology.equal then Rule.cap r ~max:Allow else r)))
 ;;
 
 let evaluate c ctx =

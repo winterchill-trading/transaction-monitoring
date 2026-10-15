@@ -1,6 +1,6 @@
 (** What the typology rules see for one event: the event, the customer's and the
-    counterparty's profile views taken before the event is applied, and the event's
-    amount in minor units of the reporting currency. Plain data, so a rule outcome can be
+    counterparty's profile views taken before the event is applied, and the event's amount
+    in minor units of the reporting currency. Plain data, so a rule outcome can be
     reproduced from a journaled context. *)
 
 open! Core

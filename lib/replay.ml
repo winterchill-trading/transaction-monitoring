@@ -84,7 +84,8 @@ module Side = struct
       ; hold = t.hold
       ; block = t.block
       ; threshold_reports = t.threshold_reports
-      ; alerts_by_typology = Hashtbl.to_alist t.by_typology |> List.sort ~compare:[%compare: string * int]
+      ; alerts_by_typology =
+          Hashtbl.to_alist t.by_typology |> List.sort ~compare:[%compare: string * int]
       ; labelled = t.labelled
       ; labelled_alerted = t.labelled_alerted
       ; unlabelled_alerted = t.unlabelled_alerted
@@ -169,7 +170,8 @@ module Report = struct
             (Decision.Outcome.to_string c.candidate)
             (Option.value_map c.baseline_score ~default:"-" ~f:(sprintf "%.4f"))
             (Option.value_map c.candidate_score ~default:"-" ~f:(sprintf "%.4f"))
-            (Option.value_map c.label ~default:"" ~f:(fun l -> " label " ^ Typology.name l)))
+            (Option.value_map c.label ~default:"" ~f:(fun l ->
+               " label " ^ Typology.name l)))
     in
     String.concat ~sep:"\n" lines ^ "\n"
   ;;

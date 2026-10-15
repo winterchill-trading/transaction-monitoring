@@ -8,8 +8,8 @@ open! Core
 (** The bank's customer (the party being monitored). *)
 module Customer_id : Ledger.Validated_id.S
 
-(** One monitored transaction event, unique per source (payment id, card authorisation
-    id, ledger record id). Decisions are idempotent per event id. *)
+(** One monitored transaction event, unique per source (payment id, card authorisation id,
+    ledger record id). Decisions are idempotent per event id. *)
 module Event_id : Ledger.Validated_id.S
 
 (** The other side of a payment: a hashed IBAN or account number, a wallet address, a

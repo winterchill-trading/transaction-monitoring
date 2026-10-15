@@ -93,8 +93,7 @@ module Customer = struct
     ; last_in = never
     ; w1h = Window.create ~width:(Time_ns.Span.of_min 5.) ~buckets:12 ~fields:F.all_fields
     ; w24h = Window.create ~width:Time_ns.Span.hour ~buckets:24 ~fields:F.all_fields
-    ; w7d =
-        Window.create ~width:(Time_ns.Span.of_hr 6.) ~buckets:28 ~fields:F.long_fields
+    ; w7d = Window.create ~width:(Time_ns.Span.of_hr 6.) ~buckets:28 ~fields:F.long_fields
     ; w30d = Window.create ~width:Time_ns.Span.day ~buckets:30 ~fields:F.long_fields
     ; out_p50 = P2_quantile.create ~p:0.5
     ; out_p95 = P2_quantile.create ~p:0.95

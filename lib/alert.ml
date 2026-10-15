@@ -197,8 +197,11 @@ let apply t (command : Command.t) =
        else if t.sar_candidate
        then Ok (t, [])
        else
-         step t ~at (Sar_flagged { by; reason; at }) (fun t ->
-           { t with sar_candidate = true }))
+         step
+           t
+           ~at
+           (Sar_flagged { by; reason; at })
+           (fun t -> { t with sar_candidate = true }))
   | Unflag_sar { by; reason; at } ->
     (match t.status with
      | Open | Closed -> refuse t "only an assigned alert can be unflagged"
@@ -210,8 +213,11 @@ let apply t (command : Command.t) =
        else if not t.sar_candidate
        then Ok (t, [])
        else
-         step t ~at (Sar_unflagged { by; reason; at }) (fun t ->
-           { t with sar_candidate = false }))
+         step
+           t
+           ~at
+           (Sar_unflagged { by; reason; at })
+           (fun t -> { t with sar_candidate = false }))
   | Close { by; verdict; note; at } ->
     (match t.status with
      | Open -> refuse t "assign the alert before closing it"
@@ -236,6 +242,9 @@ let apply t (command : Command.t) =
        refuse t "the analyst who closed the alert cannot reopen it"
      | Closed, _ when blank reason -> refuse t "reopening needs a reason"
      | Closed, _ ->
-       step t ~at (Reopened { by; reason; at }) (fun t ->
-         { t with status = Assigned; assignee = Some by; resolution = None }))
+       step
+         t
+         ~at
+         (Reopened { by; reason; at })
+         (fun t -> { t with status = Assigned; assignee = Some by; resolution = None }))
 ;;

@@ -13,9 +13,7 @@ let create (event : Event.t) ~customer ~counterparty =
 ;;
 
 let account_age t =
-  let opened =
-    Option.first_some t.event.account_opened_at t.customer.first_seen
-  in
+  let opened = Option.first_some t.event.account_opened_at t.customer.first_seen in
   Option.map opened ~f:(fun opened -> Time_ns.diff t.customer.now opened)
 ;;
 

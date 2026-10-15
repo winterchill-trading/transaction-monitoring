@@ -37,13 +37,17 @@ let customer_view (p : Profile.Params.t) ~history (e : Event.t) : Profile.Custom
   let below x =
     let a = amount x in
     ok x
-    && a >= p.reporting_threshold - (p.reporting_threshold * p.below_threshold_bps / 10_000)
+    && a
+       >= p.reporting_threshold - (p.reporting_threshold * p.below_threshold_bps / 10_000)
     && a < p.reporting_threshold
   in
   let round x = ok x && amount x > 0 && amount x % p.round_unit = 0 in
   let cash (x : _ * Event.t) = ok x && Event.is_cash (snd x) in
   let card (_, (e : Event.t)) = Event.Rail.equal e.rail Card in
-  let outgoing = List.filter applied ~f:out_ok |> List.map ~f:(fun x -> Float.of_int (amount x) /. 100.) in
+  let outgoing =
+    List.filter applied ~f:out_ok
+    |> List.map ~f:(fun x -> Float.of_int (amount x) /. 100.)
+  in
   let quantile q =
     let sketch = P2_quantile.create ~p:q in
     List.iter outgoing ~f:(P2_quantile.add sketch);
@@ -51,19 +55,23 @@ let customer_view (p : Profile.Params.t) ~history (e : Event.t) : Profile.Custom
   in
   let logs = List.map outgoing ~f:Float.log1p in
   let n = List.length logs in
-  let mean = if n = 0 then None else Some (List.sum (module Float) logs ~f:Fn.id /. Float.of_int n) in
+  let mean =
+    if n = 0 then None else Some (List.sum (module Float) logs ~f:Fn.id /. Float.of_int n)
+  in
   let sd =
     match mean with
     | Some m when n >= 2 ->
       Some
         (Float.sqrt
-           (List.sum (module Float) logs ~f:(fun y -> (y -. m) *. (y -. m)) /. Float.of_int (n - 1)))
+           (List.sum (module Float) logs ~f:(fun y -> (y -. m) *. (y -. m))
+            /. Float.of_int (n - 1)))
     | _ -> None
   in
   let distinct ~since ~inbound =
     List.filter applied ~f:(fun (at, (x : Event.t)) ->
       at >= ns since && Bool.equal inbound (Event.Direction.equal x.direction Inbound))
-    |> List.map ~f:(fun (_, (x : Event.t)) -> Ids.Counterparty_id.to_string x.counterparty)
+    |> List.map ~f:(fun (_, (x : Event.t)) ->
+      Ids.Counterparty_id.to_string x.counterparty)
     |> List.dedup_and_sort ~compare:String.compare
     |> List.length
   in
@@ -123,6 +131,7 @@ let customer_view (p : Profile.Params.t) ~history (e : Event.t) : Profile.Custom
       Option.map e.counterparty_country ~f:(fun c ->
         List.mem countries c ~equal:Risk_rules.Country.equal)
   ; countries_seen = List.length countries
-  ; device_seen = Option.map e.device_id ~f:(fun d -> List.mem devices d ~equal:String.equal)
+  ; device_seen =
+      Option.map e.device_id ~f:(fun d -> List.mem devices d ~equal:String.equal)
   }
 ;;

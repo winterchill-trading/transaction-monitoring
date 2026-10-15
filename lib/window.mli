@@ -30,8 +30,8 @@ val add : t -> at:Time_ns.t -> field:int -> int -> unit
     fine; zeros are skipped). *)
 val add_many : t -> at:Time_ns.t -> int array -> unit
 
-(** [sum t ~now ~field ~last] is the sum of counter [field] over the [last] buckets
-    ending with [now]'s bucket ([last] is clamped to [buckets]). *)
+(** [sum t ~now ~field ~last] is the sum of counter [field] over the [last] buckets ending
+    with [now]'s bucket ([last] is clamped to [buckets]). *)
 val sum : t -> now:Time_ns.t -> field:int -> last:int -> int
 
 (** [sum] over the whole window. *)

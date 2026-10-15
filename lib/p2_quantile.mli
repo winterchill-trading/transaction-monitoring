@@ -2,8 +2,8 @@
     five markers, constant memory, no stored observations after the fifth.
 
     Until five values have been seen the estimate is the exact nearest-rank quantile of
-    those values. The estimate always lies between the smallest and largest value seen.
-    It is deterministic: the same values in the same order give the same estimate, so a
+    those values. The estimate always lies between the smallest and largest value seen. It
+    is deterministic: the same values in the same order give the same estimate, so a
     snapshot taken mid-stream and resumed equals an uninterrupted run. *)
 
 open! Core

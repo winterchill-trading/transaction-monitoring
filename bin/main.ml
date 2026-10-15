@@ -68,10 +68,10 @@ let features =
     ~summary:"Export one feature row per event as CSV, for model training"
     ~readme:(fun () ->
       "Columns: event_id, customer, day (days since 1970-01-01 UTC, fractional), label \
-       (typology or empty), rules (the outcome of the rules alone), rule_hits (typologies, \
-       semicolon-separated), then every feature of the schema in order. Features are \
-       computed by the same code that scores live events, from profiles built over the \
-       file in order.")
+       (typology or empty), rules (the outcome of the rules alone), rule_hits \
+       (typologies, semicolon-separated), then every feature of the schema in order. \
+       Features are computed by the same code that scores live events, from profiles \
+       built over the file in order.")
     (let%map_open.Command events = flag "-events" (required string) ~doc:"FILE JSON lines"
      and out = flag "-out" (required string) ~doc:"FILE CSV output"
      and config = config_flag in
@@ -91,7 +91,9 @@ let features =
          Out_channel.newline oc;
          List.iter labelled ~f:(fun { event; label } ->
            let customer = Evaluator.Profiles.customer profiles event.customer in
-           let counterparty = Evaluator.Profiles.counterparty profiles event.counterparty in
+           let counterparty =
+             Evaluator.Profiles.counterparty profiles event.counterparty
+           in
            let ctx = Evaluator.context event ~customer ~counterparty in
            let decision = Evaluator.decide evaluator ctx in
            Features.encode_into config ctx x;

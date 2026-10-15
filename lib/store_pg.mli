@@ -1,5 +1,5 @@
-(** {!Store.S} on PostgreSQL through pg-async, in the [transaction_monitoring] schema
-    (see [migrations/]). The only module with SQL in it.
+(** {!Store.S} on PostgreSQL through pg-async, in the [transaction_monitoring] schema (see
+    [migrations/]). The only module with SQL in it.
 
     {!Store.S.commit} runs in one transaction: the event row is inserted first with
     [ON CONFLICT DO NOTHING], so a redelivered or concurrently processed event id finds

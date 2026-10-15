@@ -6,21 +6,21 @@ let at_min m = Time_ns.add t0 (Time_ns.Span.of_min m)
 let counter = ref 0
 
 let event
-      ?id
-      ?(customer = "cust-1")
-      ?(counterparty = "cp-1")
-      ?counterparty_country
-      ?(rail = Event.Rail.Sepa)
-      ?(direction = Event.Direction.Outbound)
-      ?card_channel
-      ?mcc
-      ?(declined = false)
-      ?device_id
-      ?ip_country
-      ?(residence = "DE")
-      ?account_opened_at
-      ~at
-      amount
+  ?id
+  ?(customer = "cust-1")
+  ?(counterparty = "cp-1")
+  ?counterparty_country
+  ?(rail = Event.Rail.Sepa)
+  ?(direction = Event.Direction.Outbound)
+  ?card_channel
+  ?mcc
+  ?(declined = false)
+  ?device_id
+  ?ip_country
+  ?(residence = "DE")
+  ?account_opened_at
+  ~at
+  amount
   : Event.t
   =
   let id =
@@ -67,32 +67,41 @@ let stream_generator =
     and amount =
       Quickcheck.Generator.weighted_union
         [ 4., Int.gen_incl 1 50_000
-        ; 1., (Int.gen_incl 1 50 >>| fun k -> k * 10_000)
+        ; (1., Int.gen_incl 1 50 >>| fun k -> k * 10_000)
         ; 1., Int.gen_incl 850_000 999_999
         ; 1., Int.gen_incl 1 199
         ; 0.3, Int.gen_incl 1_000_000 5_000_000
         ]
     and cp = Int.gen_incl 1 20
     and country =
-      Option.quickcheck_generator (Quickcheck.Generator.of_list [ "DE"; "FR"; "NL"; "AE"; "TR"; "PA" ])
-    and ip_country = Option.quickcheck_generator (Quickcheck.Generator.of_list [ "DE"; "RU" ])
+      Option.quickcheck_generator
+        (Quickcheck.Generator.of_list [ "DE"; "FR"; "NL"; "AE"; "TR"; "PA" ])
+    and ip_country =
+      Option.quickcheck_generator (Quickcheck.Generator.of_list [ "DE"; "RU" ])
     and device = Option.quickcheck_generator (Int.gen_incl 1 5)
     and rail = Event.Rail.quickcheck_generator
     and direction = Event.Direction.quickcheck_generator
     and channel = Event.Card_channel.quickcheck_generator
-    and declined = Quickcheck.Generator.weighted_union [ 9., return false; 1., return true ] in
-    return (gap, fun ~at ->
-      event
-        ~counterparty:(sprintf "cp-%d" cp)
-        ?counterparty_country:country
-        ?ip_country
-        ?device_id:(Option.map device ~f:(sprintf "dev-%d"))
-        ~rail
-        ~direction
-        ?card_channel:(match rail with Card -> Some channel | _ -> None)
-        ~declined
-        ~at
-        amount)
+    and declined =
+      Quickcheck.Generator.weighted_union [ 9., return false; 1., return true ]
+    in
+    return
+      ( gap
+      , fun ~at ->
+          event
+            ~counterparty:(sprintf "cp-%d" cp)
+            ?counterparty_country:country
+            ?ip_country
+            ?device_id:(Option.map device ~f:(sprintf "dev-%d"))
+            ~rail
+            ~direction
+            ?card_channel:
+              (match rail with
+               | Card -> Some channel
+               | _ -> None)
+            ~declined
+            ~at
+            amount )
   in
   let%bind n = Int.gen_incl 1 120 in
   let%map steps = List.gen_with_length n one in

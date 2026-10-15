@@ -4,7 +4,8 @@ open Transaction_monitoring
 
 let%expect_test "memory store conformance" =
   let%map () = Store_conformance.run (Store_memory.store (Store_memory.create ())) in
-  [%expect {|
+  [%expect
+    {|
     (commit (event e1) (r Committed))
     (commit (event e2) (r Committed))
     (commit (event e3) (r Committed))
