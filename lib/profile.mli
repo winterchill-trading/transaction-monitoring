@@ -89,7 +89,9 @@ module Customer : sig
       ; below_sum_7d : int
       ; cash_n_24h : int (** ATM withdrawals and deposits *)
       ; cash_sum_24h : int
-      ; card_n_10m : int (** card attempts, approved or declined *)
+      ; card_n_10m : int
+      (** card attempts, approved or declined, in the last three 5-minute buckets (10 to
+          15 minutes) *)
       ; card_small_n_10m : int
       ; declined_n_10m : int
       ; declined_n_1h : int
