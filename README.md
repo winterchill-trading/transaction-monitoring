@@ -173,8 +173,9 @@ mid-stream, written and read with bin_prot, resumes to exactly the same profile.
 Amounts are in the reporting currency. Every threshold, window and country list is in
 the rules config ([examples/config.sexp](examples/config.sexp)); a typology can be
 disabled or run in shadow mode (hits recorded at Allow). The country lists are
-examples; replace them with lists the compliance function maintains. Sanctions name
-screening is a separate service; these rules only see countries.
+examples; replace them with lists the compliance function maintains. Counterparty names
+are screened by the sibling `sanctions-screening` library; these rules only see
+countries.
 
 Every hit carries an `Explanation`: the typology, the risk-rules reason code (built-in
 codes where risk-rules has the typology), a summary naming the facts compared
@@ -316,4 +317,5 @@ and builds the docs with odoc warnings as errors.
   (thresholds compare integer minor units and are exact for any currency).
 - Alerts are per event; grouping several alerts of one customer into one case is left
   to the case-management layer.
-- No sanctions name screening, no FX conversion (callers supply `base_amount`).
+- No name screening here (see `sanctions-screening`), no FX conversion (callers supply
+  `base_amount`).
