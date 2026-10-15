@@ -92,4 +92,9 @@ let main () =
   printf "alert %s, release the payment\n" (Alert.Status.to_string closed.status)
 ;;
 
-let () = Thread_safe.block_on_async_exn main
+let () =
+  Thread_safe.block_on_async_exn (fun () ->
+    (* Async's printf is buffered; flush before the program exits *)
+    let%bind () = main () in
+    Writer.flushed (force Writer.stdout))
+;;

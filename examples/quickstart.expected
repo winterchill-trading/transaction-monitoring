@@ -1,0 +1,10 @@
+in-1: booked
+out-1: submitted to the scheme
+out-2: hold, customer sees "under review"
+out-2: hold, customer sees "under review"
+review alert-out-2:
+  [review] high_risk_corridor: 1200.00 to IR, first time
+    FATF R.19 (higher-risk countries); AMLR (EU) 2024/1624 Arts. 29-31 (high-risk third countries)
+  [allow] tm-aml-gbdt@09927dde6762: model score 0.8214; top reasons amount, account_age_days, rail_sepa_instant
+    model metrics in models/<name>/metrics.json
+alert closed, release the payment
