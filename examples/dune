@@ -6,9 +6,10 @@
 
 (rule
  (deps ../models/tm-aml-gbdt/model.json)
- (with-stdout-to
-  quickstart.output
-  (run ./quickstart.exe)))
+ (action
+  (with-stdout-to
+   quickstart.output
+   (run ./quickstart.exe))))
 
 (rule
  (alias runtest)
