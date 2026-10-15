@@ -260,8 +260,9 @@ let parse_or_error f j = Or_error.bind (string_of j) ~f
 
 (* RFC 3339 with a zone ("2026-01-01T10:00:00Z", "+00:00") or a bare UTC time. *)
 let time_of_string s =
-  Or_error.try_with (fun () -> Time_ns.of_string_with_utc_offset s)
-  |> Or_error.tag_s ~tag:[%message "bad time" s]
+  match Time_ns.of_string_with_utc_offset s with
+  | t -> Ok t
+  | exception _ -> Or_error.error_s [%message "bad time, expected RFC 3339" s]
 ;;
 
 let of_json json =
