@@ -1,0 +1,16 @@
+(executable
+ (name main)
+ (public_name transaction-monitoring)
+ (package transaction-monitoring)
+ (libraries
+  transaction-monitoring
+  core
+  core_unix
+  core_unix.command_unix
+  core_bench
+  async
+  yojson
+  risk-rules
+  risk-models)
+ (preprocess
+  (pps ppx_jane)))
