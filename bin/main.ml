@@ -36,15 +36,21 @@ let read_labelled path =
 let generate =
   Command.basic
     ~summary:"Write synthetic labelled events as JSON lines"
-    (let%map_open.Command customers =
-       flag "-customers" (optional_with_default 4_000 int) ~doc:"N customers (4000)"
-     and days = flag "-days" (optional_with_default 75 int) ~doc:"N days (75)"
-     and seed = flag "-seed" (optional_with_default 42 int) ~doc:"N seed (42)"
+    (let d = Synthetic.Config.default in
+     let%map_open.Command customers =
+       flag
+         "-customers"
+         (optional_with_default d.customers int)
+         ~doc:(sprintf "N customers (%d)" d.customers)
+     and days =
+       flag "-days" (optional_with_default d.days int) ~doc:(sprintf "N days (%d)" d.days)
+     and seed =
+       flag "-seed" (optional_with_default d.seed int) ~doc:(sprintf "N seed (%d)" d.seed)
      and bad_share =
        flag
          "-bad-share"
-         (optional_with_default 0.04 float)
-         ~doc:"P share of customers with a typology episode (0.04)"
+         (optional_with_default d.bad_share float)
+         ~doc:(sprintf "P share of customers with a typology episode (%g)" d.bad_share)
      and out = flag "-out" (required string) ~doc:"FILE output (JSON lines)" in
      fun () ->
        let config = { Synthetic.Config.default with customers; days; seed; bad_share } in
