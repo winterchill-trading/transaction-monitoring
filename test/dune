@@ -15,6 +15,9 @@
   pg-async
   pg-async.testing)
  (inline_tests
+  (deps
+   (glob_files fixtures/*.csv)
+   ../models/tm-aml-gbdt/model.json)
   (flags
    (:standard -source-tree-root .)))
  (preprocess
