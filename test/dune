@@ -14,6 +14,7 @@
   risk-models
   pg-async
   pg-async.testing
+  sanctions-screening-pg
   uri)
  (inline_tests
   (deps
