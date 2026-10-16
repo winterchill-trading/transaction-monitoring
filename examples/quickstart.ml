@@ -70,7 +70,7 @@ let book_inbound monitor e =
 ;;
 
 let main () =
-  let model = Model.load "../models/tm-aml-gbdt/model.json" |> ok_exn in
+  let model = Model.bundled () |> ok_exn in
   let evaluator = Evaluator.create ~model Rules.Config.default |> ok_exn in
   let%bind monitor =
     Monitor.create
