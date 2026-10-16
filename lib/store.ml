@@ -35,6 +35,23 @@ module Model_version = struct
   [@@deriving sexp, compare, equal]
 end
 
+module Revocation = struct
+  type t =
+    { event_id : Ids.Event_id.t
+    ; reason : string
+    ; revoked_at : Time_ns.Alternate_sexp.t
+    }
+  [@@deriving sexp, compare, equal]
+end
+
+module Revoke_result = struct
+  type t =
+    | Revoked
+    | Already_revoked of Revocation.t
+    | Unknown_event
+  [@@deriving sexp_of]
+end
+
 module type S = sig
   type t
 
@@ -75,6 +92,26 @@ module type S = sig
 
   val record_model : t -> Model_version.t -> unit Or_error.t Deferred.t
   val current_model : t -> Model_version.t option Or_error.t Deferred.t
+
+  val find_event
+    :  t
+    -> Ids.Event_id.t
+    -> (Event.t * Revocation.t option) option Or_error.t Deferred.t
+
+  val customer_history : t -> Ids.Customer_id.t -> Event.t list Or_error.t Deferred.t
+
+  val counterparty_history
+    :  t
+    -> Ids.Counterparty_id.t
+    -> Event.t list Or_error.t Deferred.t
+
+  val revoke
+    :  t
+    -> Revocation.t
+    -> customer:Profile.Customer.snapshot
+    -> counterparty:Profile.Counterparty.snapshot
+    -> Revoke_result.t Or_error.t Deferred.t
+
   val close : t -> unit Deferred.t
 end
 

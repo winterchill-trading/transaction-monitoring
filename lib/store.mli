@@ -53,6 +53,25 @@ module Model_version : sig
   [@@deriving sexp, compare, equal]
 end
 
+module Revocation : sig
+  (** A decided event that did not happen after all (the customer cancelled, the scheme
+      rejected the payment, the card authorisation was reversed before capture). *)
+  type t =
+    { event_id : Ids.Event_id.t
+    ; reason : string (** free text for the audit trail, e.g. ["scheme rejected"] *)
+    ; revoked_at : Time_ns.Alternate_sexp.t
+    }
+  [@@deriving sexp, compare, equal]
+end
+
+module Revoke_result : sig
+  type t =
+    | Revoked
+    | Already_revoked of Revocation.t (** the stored revocation, unchanged *)
+    | Unknown_event (** no event with this id was committed *)
+  [@@deriving sexp_of]
+end
+
 module type S = sig
   type t
 
@@ -103,6 +122,34 @@ module type S = sig
 
   (** The most recently activated model (ties by version). *)
   val current_model : t -> Model_version.t option Or_error.t Deferred.t
+
+  (** A committed event and its revocation, if it was revoked. *)
+  val find_event
+    :  t
+    -> Ids.Event_id.t
+    -> (Event.t * Revocation.t option) option Or_error.t Deferred.t
+
+  (** The customer's committed events that are not revoked, in the order they were
+      committed (the order the profile saw them). *)
+  val customer_history : t -> Ids.Customer_id.t -> Event.t list Or_error.t Deferred.t
+
+  (** The same for a counterparty, across every customer. *)
+  val counterparty_history
+    :  t
+    -> Ids.Counterparty_id.t
+    -> Event.t list Or_error.t Deferred.t
+
+  (** Records the revocation and replaces both profile snapshots with the given ones (the
+      profiles rebuilt without the event), in one transaction, whatever their event
+      counts: the rebuilt profiles have one event fewer than the stored ones. Idempotent
+      by event id. The event and its decision stay stored, so a redelivery still finds the
+      decision and is not applied again. *)
+  val revoke
+    :  t
+    -> Revocation.t
+    -> customer:Profile.Customer.snapshot
+    -> counterparty:Profile.Counterparty.snapshot
+    -> Revoke_result.t Or_error.t Deferred.t
 
   val close : t -> unit Deferred.t
 end

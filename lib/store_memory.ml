@@ -9,6 +9,8 @@ type t =
   ; customers : Profile.Customer.snapshot Ids.Customer_id.Table.t
   ; counterparties : Profile.Counterparty.snapshot Ids.Counterparty_id.Table.t
   ; mutable models : Store.Model_version.t list
+  ; order : int Ids.Event_id.Table.t (** commit order, for histories *)
+  ; revocations : Store.Revocation.t Ids.Event_id.Table.t
   }
 
 let create () =
@@ -19,6 +21,8 @@ let create () =
   ; customers = Ids.Customer_id.Table.create ()
   ; counterparties = Ids.Counterparty_id.Table.create ()
   ; models = []
+  ; order = Ids.Event_id.Table.create ()
+  ; revocations = Ids.Event_id.Table.create ()
   }
 ;;
 
@@ -34,6 +38,7 @@ let commit t (c : Store.Commit.t) =
   | Some d -> return (Ok (Store.Commit_result.Duplicate d))
   | None ->
     Hashtbl.set t.events ~key:c.event.id ~data:c.event;
+    Hashtbl.set t.order ~key:c.event.id ~data:(Hashtbl.length t.order);
     Hashtbl.set t.decisions ~key:c.event.id ~data:c.decision;
     Option.iter c.alert ~f:(fun (alert, events) ->
       if not (Hashtbl.mem t.alerts alert.id)
@@ -131,6 +136,49 @@ let current_model t =
   |> return
 ;;
 
+let find_event t id =
+  return
+    (Ok
+       (Option.map (Hashtbl.find t.events id) ~f:(fun e ->
+          e, Hashtbl.find t.revocations id)))
+;;
+
+let history t ~f =
+  Hashtbl.data t.events
+  |> List.filter ~f:(fun (e : Event.t) -> f e && not (Hashtbl.mem t.revocations e.id))
+  |> List.sort
+       ~compare:
+         (Comparable.lift Int.compare ~f:(fun (e : Event.t) ->
+            Hashtbl.find_exn t.order e.id))
+  |> Or_error.return
+  |> return
+;;
+
+let customer_history t id = history t ~f:(fun e -> Ids.Customer_id.equal e.customer id)
+
+let counterparty_history t id =
+  history t ~f:(fun e -> Ids.Counterparty_id.equal e.counterparty id)
+;;
+
+let revoke t (r : Store.Revocation.t) ~customer ~counterparty =
+  match Hashtbl.find t.events r.event_id, Hashtbl.find t.revocations r.event_id with
+  | None, _ -> return (Ok Store.Revoke_result.Unknown_event)
+  | Some _, Some stored -> return (Ok (Store.Revoke_result.Already_revoked stored))
+  | Some _, None ->
+    Hashtbl.set t.revocations ~key:r.event_id ~data:r;
+    let c = Profile.Customer.of_snapshot customer in
+    Hashtbl.set
+      t.customers
+      ~key:(Profile.Customer.customer c)
+      ~data:(copy_customer customer);
+    let cp = Profile.Counterparty.of_snapshot counterparty in
+    Hashtbl.set
+      t.counterparties
+      ~key:(Profile.Counterparty.counterparty cp)
+      ~data:(copy_counterparty counterparty);
+    return (Ok Store.Revoke_result.Revoked)
+;;
+
 let close _ = return ()
 
 let store t =
@@ -150,6 +198,10 @@ let store t =
         let decisions = decisions
         let record_model = record_model
         let current_model = current_model
+        let find_event = find_event
+        let customer_history = customer_history
+        let counterparty_history = counterparty_history
+        let revoke = revoke
         let close = close
       end)
     , t )
