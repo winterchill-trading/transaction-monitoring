@@ -18,10 +18,12 @@ module Side : sig
     ; block : int
     ; threshold_reports : int
     ; alerts_by_typology : (string * int) list
-    (** alerts per typology name, plus ["model"] for alerts raised by the score alone *)
+    (** alerts per typology name, plus ["model"] for alerts raised by the score alone and
+        ["model_uncertain"] for abstentions routed to a hold *)
     ; labelled : int (** events with a label *)
     ; labelled_alerted : int (** of those, held or blocked *)
     ; unlabelled_alerted : int (** alerts on events without a label *)
+    ; abstained : int (** decisions where the model abstained *)
     }
   [@@deriving sexp_of]
 end
@@ -34,6 +36,7 @@ module Change : sig
     ; baseline_score : float option
     ; candidate_score : float option
     ; label : Typology.t option
+    ; why : string list (** the candidate's {!Decision.why} *)
     }
   [@@deriving sexp_of]
 end
@@ -46,6 +49,11 @@ module Report : sig
     ; new_alerts : int (** held or blocked by the candidate only *)
     ; cleared_alerts : int (** held or blocked by the baseline only *)
     ; sample_changes : Change.t list (** the first [max_changes] changes *)
+    ; accuracy_coverage : Risk_models.Abstain.Curve.t option
+    (** with labels and a model: accuracy, precision and recall of the model's decision at
+        its hold threshold when it abstains on the scores closest to it, per coverage
+        (logit-margin confidence); the table to choose [Policy.abstain]'s [min_confidence]
+        from *)
     }
   [@@deriving sexp_of]
 

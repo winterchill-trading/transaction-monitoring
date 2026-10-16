@@ -11,6 +11,7 @@ module Side = struct
     ; labelled : int
     ; labelled_alerted : int
     ; unlabelled_alerted : int
+    ; abstained : int
     }
   [@@deriving sexp_of]
 
@@ -27,6 +28,7 @@ module Side = struct
       ; mutable labelled : int
       ; mutable labelled_alerted : int
       ; mutable unlabelled_alerted : int
+      ; mutable abstained : int
       }
 
     let create () =
@@ -39,11 +41,13 @@ module Side = struct
       ; labelled = 0
       ; labelled_alerted = 0
       ; unlabelled_alerted = 0
+      ; abstained = 0
       }
     ;;
 
     let add t (d : Decision.t) ~label =
       t.decisions <- t.decisions + 1;
+      if d.model_abstained then t.abstained <- t.abstained + 1;
       if d.threshold_report then t.threshold_reports <- t.threshold_reports + 1;
       let alerted =
         match d.outcome with
@@ -66,6 +70,7 @@ module Side = struct
             | Challenge | Review | Block ->
               (match e.typology, e.source with
                | Some ty, _ -> Some (Typology.name ty)
+               | None, Model _ when Explanation.is_uncertain e -> Some "model_uncertain"
                | None, Model _ -> Some "model"
                | None, Rule r -> Some r))
           |> List.dedup_and_sort ~compare:String.compare
@@ -89,6 +94,7 @@ module Side = struct
       ; labelled = t.labelled
       ; labelled_alerted = t.labelled_alerted
       ; unlabelled_alerted = t.unlabelled_alerted
+      ; abstained = t.abstained
       }
     ;;
   end
@@ -102,6 +108,7 @@ module Change = struct
     ; baseline_score : float option
     ; candidate_score : float option
     ; label : Typology.t option
+    ; why : string list
     }
   [@@deriving sexp_of]
 end
@@ -114,6 +121,7 @@ module Report = struct
     ; new_alerts : int
     ; cleared_alerts : int
     ; sample_changes : Change.t list
+    ; accuracy_coverage : Risk_models.Abstain.Curve.t option
     }
   [@@deriving sexp_of]
 
@@ -127,9 +135,10 @@ module Report = struct
         s.block
         s.threshold_reports
     ; sprintf
-        "  alerts by typology: %s"
+        "  alerts by typology: %s%s"
         (List.map s.alerts_by_typology ~f:(fun (k, v) -> sprintf "%s %d" k v)
          |> String.concat ~sep:", ")
+        (if s.abstained = 0 then "" else sprintf "; model abstained %d" s.abstained)
     ]
     @
     if s.labelled = 0
@@ -162,7 +171,7 @@ module Report = struct
           t.changed
           t.new_alerts
           t.cleared_alerts
-        :: List.map t.sample_changes ~f:(fun c ->
+        :: List.concat_map t.sample_changes ~f:(fun c ->
           sprintf
             "  %s %s -> %s (score %s -> %s)%s"
             (Ids.Event_id.to_string c.event_id)
@@ -171,7 +180,20 @@ module Report = struct
             (Option.value_map c.baseline_score ~default:"-" ~f:(sprintf "%.4f"))
             (Option.value_map c.candidate_score ~default:"-" ~f:(sprintf "%.4f"))
             (Option.value_map c.label ~default:"" ~f:(fun l ->
-               " label " ^ Typology.name l)))
+               " label " ^ Typology.name l))
+          :: List.map c.why ~f:(fun w -> "    " ^ w))
+    in
+    let lines =
+      lines
+      @
+      match t.accuracy_coverage with
+      | None -> []
+      | Some curve ->
+        String.split_lines (Risk_models.Abstain.Curve.to_string_hum curve)
+        @ [ sprintf
+              "  area under the risk-coverage curve %.5f"
+              (Risk_models.Abstain.Curve.aurc curve)
+          ]
     in
     String.concat ~sep:"\n" lines ^ "\n"
   ;;
@@ -188,6 +210,7 @@ type t =
   ; mutable new_alerts : int
   ; mutable cleared_alerts : int
   ; mutable changes : Change.t list (** newest first *)
+  ; scored : (float * bool) Queue.t (** candidate scores and labels *)
   }
 
 let create ?baseline ?(max_changes = 20) candidate =
@@ -201,6 +224,7 @@ let create ?baseline ?(max_changes = 20) candidate =
   ; new_alerts = 0
   ; cleared_alerts = 0
   ; changes = []
+  ; scored = Queue.create ()
   }
 ;;
 
@@ -216,6 +240,8 @@ let step ?label t (event : Event.t) =
   let ctx = Evaluator.context event ~customer ~counterparty in
   let decision = Evaluator.decide t.candidate ctx in
   Side.Acc.add t.candidate_acc decision ~label;
+  Option.iter decision.score ~f:(fun s ->
+    Queue.enqueue t.scored (s, Option.is_some label));
   Option.iter t.baseline ~f:(fun b ->
     let before = Evaluator.decide b ctx in
     Side.Acc.add t.baseline_acc before ~label;
@@ -235,6 +261,7 @@ let step ?label t (event : Event.t) =
            ; baseline_score = before.score
            ; candidate_score = decision.score
            ; label
+           ; why = Decision.why decision
            }
            :: t.changes));
   Evaluator.apply event ~customer ~counterparty;
@@ -248,5 +275,16 @@ let report t : Report.t =
   ; new_alerts = t.new_alerts
   ; cleared_alerts = t.cleared_alerts
   ; sample_changes = List.rev t.changes
+  ; accuracy_coverage =
+      (* Only with labels (synthetic data, or confirmed cases joined by the caller): what
+         the model's decision at its hold threshold gets right at each coverage. *)
+      (match Evaluator.hold_at t.candidate with
+       | Some h when (not (Queue.is_empty t.scored)) && t.candidate_acc.labelled > 0 ->
+         Risk_models.Abstain.Curve.compute
+           ~threshold:h
+           ~confidence:Logit_margin
+           (Queue.to_array t.scored)
+         |> Result.ok
+       | Some _ | None -> None)
   }
 ;;
