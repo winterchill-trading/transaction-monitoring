@@ -35,3 +35,11 @@ val encode : Rules.Config.t -> Context.t -> float array
 
 (** [schema] names with values, for debugging and tests. *)
 val to_named : Rules.Config.t -> Context.t -> (string * float) list
+
+(** A reviewer-facing name for a {!schema} feature, e.g. ["beneficiary_age_hours"] is
+    ["hours since the payee was added"]. Unknown names come back with spaces for
+    underscores. *)
+val label : string -> string
+
+(** Whether {!label} knows [name] (a test checks every {!schema} feature does). *)
+val has_label : string -> bool

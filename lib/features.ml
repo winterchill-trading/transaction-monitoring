@@ -216,3 +216,94 @@ let encode config ctx =
 let to_named config ctx =
   List.zip_exn (Array.to_list schema.features) (Array.to_list (encode config ctx))
 ;;
+
+let labels =
+  String.Map.of_alist_exn
+    [ "is_card", "card payment"
+    ; "amount", "amount"
+    ; "amount_is_round", "round amount"
+    ; "balance", "balance"
+    ; "amount_to_balance", "amount over balance"
+    ; "beneficiary_age_hours", "hours since the payee was added"
+    ; "beneficiary_trusted", "trusted payee"
+    ; "counterparty_country_is_residence", "counterparty in the country of residence"
+    ; "self_hosted_unverified", "unverified self-hosted wallet"
+    ; "mcc", "merchant category"
+    ; "out_count_1h", "payments out, 1 h"
+    ; "out_count_24h", "payments out, 24 h"
+    ; "out_sum_24h", "paid out, 24 h"
+    ; "out_sum_30d", "paid out, 30 days"
+    ; "out_distinct_beneficiaries_24h", "distinct payees, 24 h"
+    ; "in_count_24h", "payments in, 24 h"
+    ; "in_sum_24h", "received, 24 h"
+    ; "pass_through_ratio_24h", "paid out over received, 24 h"
+    ; "new_device", "new device"
+    ; "ip_country_is_residence", "IP in the country of residence"
+    ; "hours_since_credentials_change", "hours since a credentials change"
+    ; "account_age_days", "account age in days"
+    ; "hour_of_day_utc", "hour of day (UTC)"
+    ; "log1p_amount", "amount (log scale)"
+    ; "is_weekend", "weekend"
+    ; "out_count_7d", "payments out, 7 days"
+    ; "out_sum_1h", "paid out, 1 h"
+    ; "out_sum_7d", "paid out, 7 days"
+    ; "amount_over_mean_30d", "amount over the 30-day mean"
+    ; "in_distinct_senders_24h", "distinct payers, 24 h"
+    ; "minutes_since_last_inbound", "minutes since the last credit"
+    ; "failed_sca_24h", "failed strong authentications, 24 h"
+    ; "card_auths_10m", "card authorisations, 10 min"
+    ; "card_declines_10m", "card declines, 10 min"
+    ; "rail_sepa_instant", "rail: instant credit transfer"
+    ; "rail_onchain", "rail: on-chain"
+    ; "rail_lightning", "rail: Lightning"
+    ; "rail_intraledger", "rail: internal transfer"
+    ; "card_online", "card not present"
+    ; "card_atm", "ATM"
+    ; "payee_match", "payee name matched"
+    ; "payee_close_match", "payee name close match"
+    ; "payee_no_match", "payee name did not match"
+    ; "payee_not_possible", "payee check not possible"
+    ; "direction_inbound", "inbound"
+    ; "is_cash", "cash"
+    ; "declined", "declined"
+    ; "events_seen", "events seen for the customer"
+    ; "dormancy_days", "days since the last activity"
+    ; "round_share_30d", "share of round amounts, 30 days"
+    ; "below_threshold_n_24h", "amounts just under the reporting threshold, 24 h"
+    ; "below_threshold_n_7d", "amounts just under the reporting threshold, 7 days"
+    ; "below_threshold_sum_7d", "sum just under the reporting threshold, 7 days"
+    ; "cash_n_24h", "cash operations, 24 h"
+    ; "cash_sum_24h", "cash, 24 h"
+    ; "card_small_n_10m", "small card attempts, 10 min"
+    ; "declined_n_1h", "declines, 1 h"
+    ; "new_counterparty", "new counterparty"
+    ; "new_country", "new country"
+    ; "countries_seen", "countries seen"
+    ; "country_high_risk", "higher-risk country"
+    ; "country_sanctions_adjacent", "country under sectoral measures"
+    ; "amount_over_p95", "amount over the customer's 95th percentile"
+    ; "amount_log_z", "amount against the customer's usual (z-score)"
+    ; "in_n_7d", "payments in, 7 days"
+    ; "in_sum_7d", "received, 7 days"
+    ; "in_sum_30d", "received, 30 days"
+    ; "out_n_30d", "payments out, 30 days"
+    ; "senders_7d", "distinct payers, 7 days"
+    ; "out_in_ratio_7d", "paid out over received, 7 days"
+    ; "cp_events", "events of the counterparty"
+    ; "cp_payers_7d", "customers paying the counterparty, 7 days"
+    ; "cp_payees_7d", "customers paid by the counterparty, 7 days"
+    ; "cp_paid_sum_7d", "paid to the counterparty by all customers, 7 days"
+    ; "cp_sent_sum_7d", "sent by the counterparty to all customers, 7 days"
+    ; "risk_band", "customer risk band"
+    ]
+;;
+
+(* Unknown names (a schema change without a label) fall back to the name with spaces,
+   never an exception on the decision path. *)
+let label name =
+  match Map.find labels name with
+  | Some l -> l
+  | None -> String.tr name ~target:'_' ~replacement:' '
+;;
+
+let has_label name = Map.mem labels name
