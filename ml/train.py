@@ -78,9 +78,12 @@ def export_tree(pred, keep):
     threshold = np.where(threshold == np.inf, np.finfo(np.float64).max, threshold)
     assert np.isfinite(threshold).all()
     assert not nodes["is_categorical"].any()
+    # count (training rows per node) is the cover risk-models' path-dependent
+    # attributions weigh by; the explanation attached to holds needs it.
     return dict(feature=feature.tolist(), threshold=threshold.tolist(),
                 missing_left=nodes["missing_go_to_left"].astype(int).tolist(),
-                left=left.tolist(), right=right.tolist(), value=value.tolist())
+                left=left.tolist(), right=right.tolist(), value=value.tolist(),
+                count=count.tolist())
 
 
 def per_day_top_k(df, score, k):
