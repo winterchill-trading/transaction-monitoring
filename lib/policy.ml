@@ -8,11 +8,28 @@ module Model_mode = struct
   [@@deriving sexp, compare, equal, enumerate]
 end
 
+module Abstain = struct
+  module Route = struct
+    type t =
+      | Hold
+      | Rules_only
+    [@@deriving sexp, compare, equal, enumerate]
+  end
+
+  type t =
+    { min_confidence : float
+    ; confidence : Risk_models.Abstain.Confidence.t [@default Logit_margin]
+    ; route : Route.t
+    }
+  [@@deriving sexp, compare, equal]
+end
+
 type t =
   { name : string [@default "default"]
   ; model_mode : Model_mode.t [@default Shadow]
   ; hold_at : float option [@default None]
   ; block_at : float option [@default None]
+  ; abstain : Abstain.t option [@default None]
   }
 [@@deriving sexp, compare, equal]
 
@@ -36,7 +53,26 @@ let thresholds t model =
     match hold_at, block_at with
     | Some h, Some b when Float.(h > b) ->
       Or_error.error_s [%message "hold_at above block_at" (h : float) (b : float)]
-    | _ -> Ok (hold_at, block_at))
+    | _ ->
+      (match t.abstain, hold_at with
+       | Some a, Some h ->
+         Risk_models.Abstain.create
+           ~threshold:h
+           ~confidence:a.confidence
+           ~min_confidence:a.min_confidence
+         |> Or_error.map ~f:(fun (_ : Risk_models.Abstain.t) -> hold_at, block_at)
+       | Some _, None -> Or_error.error_s [%message "abstain needs a hold threshold"]
+       | None, _ -> Ok (hold_at, block_at)))
+;;
+
+let abstainer t ~hold_at =
+  Option.map t.abstain ~f:(fun (a : Abstain.t) ->
+    (* [thresholds] validated these when the evaluator was created. *)
+    Risk_models.Abstain.create
+      ~threshold:hold_at
+      ~confidence:a.confidence
+      ~min_confidence:a.min_confidence
+    |> Or_error.ok_exn)
 ;;
 
 let load path =
