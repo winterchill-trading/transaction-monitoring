@@ -269,3 +269,116 @@ let%expect_test "config: defaults load from an empty file and validation refuses
        "unusual_multiple must exceed 1")))
     |}]
 ;;
+
+(* Countermeasure countries block instead of holding; a typology can be made stricter on
+   its own; the most specific override wins. *)
+let%expect_test "severity overrides by country and typology" =
+  let config =
+    Rules.Config.t_of_sexp
+      (Sexp.of_string
+         {|((overrides
+             (((countries (KP IR MM)) (severity Block))
+              ((typologies (high_risk_corridor)) (severity Challenge))
+              ((typologies (high_risk_corridor)) (countries (MM)) (severity Review))
+              ((typologies (structuring)) (severity Block)))))|})
+    |> Rules.Config.validate
+    |> Or_error.ok_exn
+  in
+  (* country beats typology only: IR blocks *)
+  run ~config [] (event ~counterparty_country:"IR" ~at:(at_min 0.) 5_000);
+  (* both lists beat country only: MM stays a review *)
+  run ~config [] (event ~counterparty_country:"MM" ~at:(at_min 0.) 5_000);
+  (* the IP country counts too, for any typology that hit *)
+  run ~config [] (event ~counterparty_country:"DE" ~ip_country:"KP" ~at:(at_min 0.) 5_000);
+  (* RU is not a countermeasure country: the default review *)
+  run ~config [] (event ~counterparty_country:"RU" ~at:(at_min 0.) 5_000);
+  run
+    ~config
+    [ event ~direction:Inbound ~at:(at_min 0.) 950_000
+    ; event ~direction:Inbound ~at:(at_min (60. *. 24.)) 920_000
+    ]
+    (event ~direction:Inbound ~at:(at_min (60. *. 48.)) 990_000);
+  [%expect
+    {|
+    severity block
+    [block] high_risk_corridor: 50.00 to IR, first time
+    ((country IR) (amount 50.00) (first_time true)
+     (severity_override "block for typologies any, countries KP,IR,MM"))
+    family sanctions_geography; FATF R.19 (higher-risk countries); AMLR (EU) 2024/1624 Arts. 29-31 (high-risk third countries)
+    severity review
+    [review] high_risk_corridor: 50.00 to MM, first time
+    ((country MM) (amount 50.00) (first_time true)
+     (severity_override "review for typologies high_risk_corridor, countries MM"))
+    family sanctions_geography; FATF R.19 (higher-risk countries); AMLR (EU) 2024/1624 Arts. 29-31 (high-risk third countries)
+    severity allow
+    severity review
+    [review] sanctions_adjacent: 50.00 touches RU
+    ((counterparty_country RU))
+    family sanctions_geography; FATF R.6 and R.7 (targeted financial sanctions); AMLR (EU) 2024/1624 Art. 20(1)(d)
+    severity block
+    [block] structuring: 3 amounts in [8500.00, 10000.00) within 7d, this one 9900.00; together 28600.00
+    ((count_7d 3) (sum_7d 28600.00) (threshold 10000.00) (amount 9900.00)
+     (severity_override "block for typologies structuring, countries any"))
+    family structuring; FATF R.20; 31 CFR 1010.314 (structuring to evade reporting)
+    |}]
+;;
+
+let%expect_test "overrides change the decision, not only the hit" =
+  let decide config e =
+    let evaluator = Evaluator.create config |> Or_error.ok_exn in
+    let profiles = Evaluator.Profiles.create config.profile in
+    let d = Evaluator.process evaluator profiles e in
+    Decision.Outcome.to_string d.outcome
+  in
+  let e = event ~counterparty_country:"IR" ~at:(at_min 0.) 5_000 in
+  let block =
+    { config with
+      overrides =
+        [ { typologies = []
+          ; countries = [ Risk_rules.Country.of_string "IR" ]
+          ; severity = Block
+          }
+        ]
+    }
+  in
+  print_s [%message "" ~default:(decide config e) ~with_override:(decide block e)];
+  [%expect {| ((default hold) (with_override block)) |}]
+;;
+
+let%expect_test "overrides are validated" =
+  let o ?(typologies = []) ?(countries = []) severity : Rules.Override.t =
+    { typologies
+    ; countries = List.map countries ~f:Risk_rules.Country.of_string
+    ; severity
+    }
+  in
+  let check overrides config =
+    match Rules.Config.validate { config with Rules.Config.overrides } with
+    | Ok _ -> print_endline "ok"
+    | Error e ->
+      (match Error.sexp_of_t e with
+       | List [ _; List errors ] ->
+         List.iter errors ~f:(fun e ->
+           match e with
+           | List (Atom msg :: _) -> print_endline msg
+           | e -> print_s e)
+       | e -> print_s e)
+  in
+  check [ o Block ] config;
+  check [ o ~typologies:[ Threshold_report ] Block ] config;
+  check [ o ~typologies:[ Atm_cash ] Block ] { config with disabled = [ Atm_cash ] };
+  check [ o ~typologies:[ Atm_cash ] Block ] { config with shadow = [ Atm_cash ] };
+  check [ o ~countries:[ "IR"; "IR" ] Block ] config;
+  check [ o ~countries:[ "IR"; "KP" ] Block; o ~countries:[ "KP"; "IR" ] Review ] config;
+  check [ o ~countries:[ "IR" ] Block; o ~typologies:[ Structuring ] Block ] config;
+  [%expect
+    {|
+    override names no typology and no country
+    threshold_report is a reporting obligation recorded at Allow; it cannot be overridden
+    override of disabled typology atm_cash
+    override of shadow typology atm_cash has no effect (shadow hits stay at Allow)
+    override lists a typology or country twice
+    same typologies and countries as override 0
+    ok
+    |}]
+;;
