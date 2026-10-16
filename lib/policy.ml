@@ -29,7 +29,7 @@ type t =
   ; model_mode : Model_mode.t [@default Shadow]
   ; hold_at : float option [@default None]
   ; block_at : float option [@default None]
-  ; abstain : Abstain.t option [@default None]
+  ; abstain : Abstain.t option [@sexp.option]
   }
 [@@deriving sexp, compare, equal]
 
