@@ -163,6 +163,40 @@ let migrate conn ~schema =
   return adopted
 ;;
 
+(* Events stored before migration 0003 have no counterparty column value; it is in the
+   body. Filled in batches, once (later events are written with it). *)
+let backfill_counterparties conn ~schema =
+  let open Deferred.Result.Let_syntax in
+  let rec batch () =
+    let%bind rows =
+      Query.fetch_all
+        conn
+        ~label:"backfill_select"
+        (q schema "SELECT body FROM {s}.events WHERE counterparty IS NULL LIMIT 1000")
+        ~row:
+          (Row.map (Row.column "body" Type.bytea) ~f:(fun b ->
+             Bin_prot.Reader.of_string Event.Stable.V1.bin_reader_t b))
+    in
+    if List.is_empty rows
+    then return ()
+    else (
+      let%bind () =
+        Deferred.Result.List.iter rows ~f:(fun (e : Event.t) ->
+          Query.execute
+            conn
+            ~label:"backfill_update"
+            (q schema "UPDATE {s}.events SET counterparty = $2 WHERE event_id = $1")
+            ~params:
+              [ Param.string (Ids.Event_id.to_string e.id)
+              ; Param.string (Ids.Counterparty_id.to_string e.counterparty)
+              ]
+          |> Deferred.Result.ignore_m)
+      in
+      batch ())
+  in
+  batch ()
+;;
+
 let connect ?database_url ?(schema = default_schema) ?(max_connections = 4) () =
   let open Deferred.Or_error.Let_syntax in
   let%bind schema = Deferred.return (validate_schema schema) in
@@ -181,6 +215,14 @@ let connect ?database_url ?(schema = default_schema) ?(max_connections = 4) () =
       Deferred.map
         (Migrate.apply conn migrations)
         ~f:(Result.map_error ~f:Migrate.Error.to_error)
+  in
+  let%bind.Deferred result =
+    match result with
+    | Error _ -> Deferred.return result
+    | Ok applied ->
+      Deferred.map (backfill_counterparties conn ~schema) ~f:(function
+        | Ok () -> Ok applied
+        | Error e -> Error (Pg_error.to_error e))
   in
   let%bind.Deferred () = Connection.close conn in
   let%map applied_migrations =
@@ -290,13 +332,14 @@ let commit t (c : Store.Commit.t) =
         ~label:"insert_event"
         (q
            t.schema
-           "INSERT INTO {s}.events (event_id, customer, occurred_at, body) VALUES ($1, \
-            $2, $3, $4) ON CONFLICT (event_id) DO NOTHING")
+           "INSERT INTO {s}.events (event_id, customer, occurred_at, body, counterparty) \
+            VALUES ($1, $2, $3, $4, $5) ON CONFLICT (event_id) DO NOTHING")
         ~params:
           [ Param.string (Ids.Event_id.to_string c.event.id)
           ; Param.string (Ids.Customer_id.to_string c.event.customer)
           ; Param.time_ns c.event.occurred_at
           ; Param.bytea (encode Event.Stable.V1.bin_writer_t c.event)
+          ; Param.string (Ids.Counterparty_id.to_string c.event.counterparty)
           ]
     in
     if inserted = 0
@@ -531,6 +574,149 @@ let current_model t =
   |> or_error ~label:"current_model"
 ;;
 
+let event_row = body_row Event.Stable.V1.bin_reader_t
+
+let revocation_row =
+  let open Row.Let_syntax in
+  let%map_open event_id = column "event_id" string
+  and reason = column "reason" string
+  and revoked_at = column "revoked_at" time_ns in
+  { Store.Revocation.event_id = Ids.Event_id.of_string event_id; reason; revoked_at }
+;;
+
+let find_event t id =
+  let open Deferred.Or_error.Let_syntax in
+  let params = [ Param.string (Ids.Event_id.to_string id) ] in
+  match%bind
+    Pool.fetch_opt
+      t.pool
+      ~label:"find_event"
+      (q t.schema "SELECT body FROM {s}.events WHERE event_id = $1")
+      ~params
+      ~row:event_row
+    |> or_error ~label:"find_event"
+  with
+  | None -> return None
+  | Some event ->
+    let%map revocation =
+      Pool.fetch_opt
+        t.pool
+        ~label:"find_revocation"
+        (q
+           t.schema
+           "SELECT event_id, reason, revoked_at FROM {s}.revocations WHERE event_id = $1")
+        ~params
+        ~row:revocation_row
+      |> or_error ~label:"find_revocation"
+    in
+    Some (event, revocation)
+;;
+
+let customer_history t id =
+  Pool.fetch_all
+    t.pool
+    ~label:"customer_history"
+    (q
+       t.schema
+       "SELECT e.body FROM {s}.events e WHERE e.customer = $1 AND NOT EXISTS (SELECT 1 \
+        FROM {s}.revocations r WHERE r.event_id = e.event_id) ORDER BY e.seq")
+    ~params:[ Param.string (Ids.Customer_id.to_string id) ]
+    ~row:event_row
+  |> or_error ~label:"customer_history"
+;;
+
+let counterparty_history t id =
+  Pool.fetch_all
+    t.pool
+    ~label:"counterparty_history"
+    (q
+       t.schema
+       "SELECT e.body FROM {s}.events e WHERE e.counterparty = $1 AND NOT EXISTS (SELECT \
+        1 FROM {s}.revocations r WHERE r.event_id = e.event_id) ORDER BY e.seq")
+    ~params:[ Param.string (Ids.Counterparty_id.to_string id) ]
+    ~row:event_row
+  |> or_error ~label:"counterparty_history"
+;;
+
+let revoke t (r : Store.Revocation.t) ~customer ~counterparty =
+  Pool.with_transaction t.pool ~f:(fun conn ->
+    let open Deferred.Result.Let_syntax in
+    let params = [ Param.string (Ids.Event_id.to_string r.event_id) ] in
+    match%bind
+      Query.fetch_opt
+        conn
+        ~label:"lock_event"
+        (q t.schema "SELECT event_id FROM {s}.events WHERE event_id = $1 FOR UPDATE")
+        ~params
+        ~row:Row.(column "event_id" Type.string)
+    with
+    | None -> return Store.Revoke_result.Unknown_event
+    | Some _ ->
+      (match%bind
+         Query.fetch_opt
+           conn
+           ~label:"find_revocation"
+           (q
+              t.schema
+              "SELECT event_id, reason, revoked_at FROM {s}.revocations WHERE event_id = \
+               $1")
+           ~params
+           ~row:revocation_row
+       with
+       | Some stored -> return (Store.Revoke_result.Already_revoked stored)
+       | None ->
+         let%bind (_ : int) =
+           Query.execute
+             conn
+             ~label:"insert_revocation"
+             (q
+                t.schema
+                "INSERT INTO {s}.revocations (event_id, reason, revoked_at) VALUES ($1, \
+                 $2, $3)")
+             ~params:(params @ [ Param.string r.reason; Param.time_ns r.revoked_at ])
+         in
+         (* Unconditional: the rebuilt profiles have fewer events than the stored ones. *)
+         let c = Profile.Customer.of_snapshot customer in
+         let%bind (_ : int) =
+           Query.execute
+             conn
+             ~label:"replace_customer_profile"
+             (q
+                t.schema
+                "INSERT INTO {s}.customer_profiles (customer, events, body) VALUES ($1, \
+                 $2, $3) ON CONFLICT (customer) DO UPDATE SET events = EXCLUDED.events, \
+                 body = EXCLUDED.body")
+             ~params:
+               [ Param.string (Ids.Customer_id.to_string (Profile.Customer.customer c))
+               ; Param.int (Profile.Customer.events c)
+               ; Param.bytea
+                   (encode Profile.Customer.Stable.Snapshot.V1.bin_writer_t customer)
+               ]
+         in
+         let cp = Profile.Counterparty.of_snapshot counterparty in
+         let%map (_ : int) =
+           Query.execute
+             conn
+             ~label:"replace_counterparty_profile"
+             (q
+                t.schema
+                "INSERT INTO {s}.counterparty_profiles (counterparty, events, body) \
+                 VALUES ($1, $2, $3) ON CONFLICT (counterparty) DO UPDATE SET events = \
+                 EXCLUDED.events, body = EXCLUDED.body")
+             ~params:
+               [ Param.string
+                   (Ids.Counterparty_id.to_string (Profile.Counterparty.counterparty cp))
+               ; Param.int (Profile.Counterparty.events cp)
+               ; Param.bytea
+                   (encode
+                      Profile.Counterparty.Stable.Snapshot.V1.bin_writer_t
+                      counterparty)
+               ]
+         in
+         Store.Revoke_result.Revoked))
+  |> or_error ~label:"revoke"
+;;
+
 let store t =
   Store.T
     ( (module struct
@@ -548,6 +734,10 @@ let store t =
         let decisions = decisions
         let record_model = record_model
         let current_model = current_model
+        let find_event = find_event
+        let customer_history = customer_history
+        let counterparty_history = counterparty_history
+        let revoke = revoke
         let close = close
       end)
     , t )
