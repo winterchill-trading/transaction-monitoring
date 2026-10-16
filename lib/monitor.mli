@@ -31,6 +31,17 @@ module Reply : sig
   val decision : t -> Decision.t option
 end
 
+module Revoke_reply : sig
+  type t =
+    | Revoked of
+        { customer_events : int (** events left in the rebuilt customer profile *)
+        ; counterparty_events : int
+        }
+    | Already_revoked of Store.Revocation.t (** revoked before; nothing changed *)
+    | Unknown_event (** no decided event with this id *)
+  [@@deriving sexp_of]
+end
+
 type t
 
 (** Records the evaluator's model (name, version, policy) in the store as activated [now],
@@ -48,6 +59,30 @@ val on_event : t -> Event.t -> Reply.t Or_error.t Deferred.t
 
 (** Events accepted and not yet finished. *)
 val pending : t -> int
+
+(** Tells the monitor that a decided event never happened (a held payment the customer
+    cancelled, a submission the scheme rejected, an authorisation reversed): the
+    customer's and the counterparty's profiles are rebuilt from the stored history without
+    it, so velocity, new-counterparty and every other profile feature behave from now on
+    exactly as if it had never been seen (a property test checks the rebuilt profiles
+    equal profiles that never saw it). The revocation and the rebuilt snapshots are stored
+    in one transaction; the event and its decision stay stored (a redelivery still answers
+    [Already_decided] and changes nothing), and decisions already taken after it are not
+    revisited. Its alert, if any, is left for an analyst to close.
+
+    Runs in turn with [on_event]. Idempotent by event id. Fails, changing nothing, when
+    the store does not hold every event a profile has seen (profiles warmed by {!Replay}
+    or loaded from elsewhere), because the rebuild would then lose history; warm up
+    through {!on_event} to be able to revoke. Cost: one read of each history, so a
+    customer's whole stored history per call; meant for the rare decided payment that does
+    not go ahead, not for every reversal. Send revocations to the instance that owns the
+    customer's partition, like its events. *)
+val revoke
+  :  t
+  -> Ids.Event_id.t
+  -> reason:string
+  -> at:Time_ns.t
+  -> Revoke_reply.t Or_error.t Deferred.t
 
 (** Loads the alert, applies the command, stores the result over the version it read; on a
     concurrent update it retries once on the fresh alert. *)

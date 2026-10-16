@@ -14,6 +14,17 @@ module Reply = struct
   ;;
 end
 
+module Revoke_reply = struct
+  type t =
+    | Revoked of
+        { customer_events : int
+        ; counterparty_events : int
+        }
+    | Already_revoked of Store.Revocation.t
+    | Unknown_event
+  [@@deriving sexp_of]
+end
+
 (* A small LRU over Hash_queue: lookups move the key to the back, inserts evict from the
    front. *)
 module Lru (Q : Hash_queue.S) = struct
@@ -175,6 +186,92 @@ let on_event t (e : Event.t) =
     >>| fun result ->
     t.pending <- t.pending - 1;
     result)
+;;
+
+(* Profiles cannot subtract an event (quantile sketches and bounded tables only move
+   forward), so revoking rebuilds both profiles from the stored history without it. That
+   is exact only if the store holds every event the profile saw: a profile warmed outside
+   the monitor (or by a snapshot from elsewhere) is refused rather than rebuilt wrong. *)
+let rebuild ~what ~current ~history ~(revoked : Event.t) ~create ~update =
+  if current <> List.length history
+  then
+    Or_error.error_s
+      [%message
+        "cannot revoke: the store does not hold the whole history of the profile"
+          what
+          ~profile_events:(current : int)
+          ~stored_events:(List.length history : int)]
+  else (
+    let p = create () in
+    List.iter history ~f:(fun (e : Event.t) ->
+      if not (Ids.Event_id.equal e.id revoked.id) then update p e);
+    Ok p)
+;;
+
+let process_revoke t id ~reason ~at =
+  let open Deferred.Or_error.Let_syntax in
+  let (Store.T ((module S), s)) = t.store in
+  match%bind S.find_event s id with
+  | None -> return Revoke_reply.Unknown_event
+  | Some (_, Some stored) -> return (Revoke_reply.Already_revoked stored)
+  | Some (e, None) ->
+    let%bind customer = customer t e.customer in
+    let%bind counterparty = counterparty t e.counterparty in
+    let%bind customer_history = S.customer_history s e.customer in
+    let%bind counterparty_history = S.counterparty_history s e.counterparty in
+    let%bind rebuilt_customer =
+      Deferred.return
+        (rebuild
+           ~what:(Ids.Customer_id.to_string e.customer)
+           ~current:(Profile.Customer.events customer)
+           ~history:customer_history
+           ~revoked:e
+           ~create:(fun () ->
+             Profile.Customer.create (Evaluator.config t.evaluator).profile e.customer)
+           ~update:Profile.Customer.update)
+    in
+    let%bind rebuilt_counterparty =
+      Deferred.return
+        (rebuild
+           ~what:(Ids.Counterparty_id.to_string e.counterparty)
+           ~current:(Profile.Counterparty.events counterparty)
+           ~history:counterparty_history
+           ~revoked:e
+           ~create:(fun () -> Profile.Counterparty.create e.counterparty)
+           ~update:Profile.Counterparty.update)
+    in
+    (match%bind.Deferred
+       S.revoke
+         s
+         { event_id = id; reason; revoked_at = at }
+         ~customer:(Profile.Customer.snapshot rebuilt_customer)
+         ~counterparty:(Profile.Counterparty.snapshot rebuilt_counterparty)
+     with
+     | Ok Revoked ->
+       Customers.set t.customers e.customer rebuilt_customer;
+       Counterparties.set t.counterparties e.counterparty rebuilt_counterparty;
+       return
+         (Revoke_reply.Revoked
+            { customer_events = Profile.Customer.events rebuilt_customer
+            ; counterparty_events = Profile.Counterparty.events rebuilt_counterparty
+            })
+     | Ok (Already_revoked stored) ->
+       evict t e;
+       return (Revoke_reply.Already_revoked stored)
+     | Ok Unknown_event ->
+       evict t e;
+       return Revoke_reply.Unknown_event
+     | Error _ as error ->
+       evict t e;
+       Deferred.return error)
+;;
+
+let revoke t id ~reason ~at =
+  (* Through the same sequencer as [on_event], so no event of these profiles is half
+     processed while they are rebuilt. *)
+  Throttle.enqueue t.sequencer (fun () ->
+    Monitor.try_with_or_error ~rest:`Log (fun () -> process_revoke t id ~reason ~at)
+    >>| Or_error.join)
 ;;
 
 let apply_alert t id command =
