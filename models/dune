@@ -1,0 +1,9 @@
+; The bundled model is also embedded in the library (Model.bundled); the installed copy
+; under share/ is for tools that read files (check-model, replay -model, Python).
+
+(install
+ (section share)
+ (package transaction-monitoring)
+ (files
+  (tm-aml-gbdt/model.json as models/tm-aml-gbdt/model.json)
+  (tm-aml-gbdt/metrics.json as models/tm-aml-gbdt/metrics.json)))
