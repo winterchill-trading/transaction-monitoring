@@ -4,12 +4,19 @@ open Pg_async
 
 type t =
   { pool : Pool.t
+  ; schema : string
   ; description : string
   ; applied_migrations : int list
   }
 
 let kind t = t.description
 let applied_migrations t = t.applied_migrations
+let schema t = t.schema
+let default_schema = "transaction_monitoring"
+
+(* Every query names its tables as [{s}.table]; [q] puts the configured schema in. The
+   prepared-statement cache is keyed by the final text, so each schema gets its own. *)
+let q schema sql = String.substr_replace_all sql ~pattern:"{s}." ~with_:(schema ^ ".")
 
 let or_error ~label d =
   d >>| fun r -> Pg_error.to_or_error r |> Or_error.tag ~tag:("store: " ^ label)
@@ -20,8 +27,145 @@ let migrations =
     { Migrate.Migration.version; name; sql })
 ;;
 
-let connect ?database_url ?(max_connections = 4) () =
+(* Schema names are spliced into SQL, so only plain lower-case identifiers are accepted:
+   they need no quoting and cannot inject anything. *)
+let validate_schema s =
+  let ok i c = Char.is_lowercase c || Char.equal c '_' || (i > 0 && Char.is_digit c) in
+  if (not (String.is_empty s))
+     && String.length s <= 63
+     && String.for_alli s ~f:ok
+     && not (String.is_prefix s ~prefix:"pg_")
+  then Ok s
+  else
+    Or_error.error_s
+      [%message
+        "schema must be a lower-case identifier ([a-z_][a-z0-9_]*, at most 63 bytes, not \
+         pg_*)"
+          s]
+;;
+
+(* Versions 0.1.0 and 0.1.1 qualified every table with [transaction_monitoring.] and let
+   pg-async record the migrations in the unqualified [schema_migrations] of the
+   connection's search path, a table the host application (and any other library) shares.
+   These are the checksums those files had; a row with one of them is ours. *)
+let legacy_checksums =
+  [ 1, "d27893bacb3d7761112ee47fd1249ca1"; 2, "21eb8b5fd740fc9ad3e4cd5d2cdaaf58" ]
+;;
+
+let text_row name = Row.column name Type.(nullable string)
+
+(* Moves the bookkeeping of an older install into [schema.schema_migrations]: only when
+   that table does not exist yet, the schema is the one the old versions used, and the
+   shared table has rows with our old checksums. The shared rows are left alone (they may
+   be deleted by hand: versions 1 and 2 with the checksums above). *)
+let adopt_legacy conn ~schema =
+  let open Deferred.Result.Let_syntax in
+  let%bind ours =
+    Query.fetch_one
+      conn
+      ~label:"migrations_table"
+      "SELECT to_regclass($1)::text AS t"
+      ~params:[ Param.string (schema ^ ".schema_migrations") ]
+      ~row:(text_row "t")
+  in
+  let%bind shared =
+    Query.fetch_one
+      conn
+      ~label:"legacy_migrations_table"
+      "SELECT (SELECT quote_ident(n.nspname) FROM pg_class c JOIN pg_namespace n ON \
+       n.oid = c.relnamespace WHERE c.oid = to_regclass('schema_migrations')) AS t"
+      ~row:(text_row "t")
+  in
+  match ours, shared with
+  | Some _, _ | None, None -> return []
+  | None, Some _ when not (String.equal schema default_schema) -> return []
+  | None, Some shared_schema ->
+    let%bind rows =
+      Query.fetch_all
+        conn
+        ~label:"legacy_migrations"
+        (sprintf
+           "SELECT version, checksum, applied_at FROM %s.schema_migrations"
+           shared_schema)
+        ~row:
+          (let open Row.Let_syntax in
+           let%map_open version = column "version" int
+           and checksum = column "checksum" string
+           and applied_at = column "applied_at" time_ns in
+           version, checksum, applied_at)
+    in
+    let adopted =
+      List.filter_map rows ~f:(fun (version, checksum, applied_at) ->
+        if List.mem legacy_checksums (version, checksum) ~equal:[%equal: int * string]
+        then
+          List.find migrations ~f:(fun m -> m.version = version)
+          |> Option.map ~f:(fun m -> m, applied_at)
+        else None)
+    in
+    if List.is_empty adopted
+    then return []
+    else
+      Tx.with_transaction conn ~f:(fun conn ->
+        (* The same table pg-async's Migrate creates, in our schema. *)
+        let%bind () =
+          Connection.execute_script
+            conn
+            ~label:"adopt_migrations"
+            (sprintf
+               "CREATE TABLE IF NOT EXISTS %s.schema_migrations (version bigint PRIMARY \
+                KEY, name text NOT NULL, checksum text NOT NULL, applied_at timestamptz \
+                NOT NULL DEFAULT now())"
+               schema)
+        in
+        Deferred.Result.List.map adopted ~f:(fun ((m : Migrate.Migration.t), at) ->
+          Query.execute
+            conn
+            ~label:"adopt_migration"
+            (sprintf
+               "INSERT INTO %s.schema_migrations (version, name, checksum, applied_at) \
+                VALUES ($1, $2, $3, $4)"
+               schema)
+            ~params:
+              [ Param.int m.version
+              ; Param.string m.name
+              ; Param.string (Migrate.Migration.checksum m)
+              ; Param.time_ns at
+              ]
+          >>| fun (_ : int) -> m.version))
+;;
+
+(* Creates the schema, adopts an older install's bookkeeping, then lets pg-async apply the
+   pending migrations with [search_path] set to the schema, so its [schema_migrations]
+   table and every table the migrations create land inside the schema. The session lock
+   serializes instances starting at once (CREATE SCHEMA IF NOT EXISTS is not safe to
+   race); closing the connection releases it. *)
+let migrate conn ~schema =
+  let open Deferred.Result.Let_syntax in
+  let%bind () =
+    Connection.execute_script
+      conn
+      ~label:"migration_lock"
+      (sprintf "SELECT pg_advisory_lock(hashtext('transaction-monitoring:%s'))" schema)
+  in
+  let%bind () =
+    Connection.execute_script
+      conn
+      ~label:"create_schema"
+      (sprintf "CREATE SCHEMA IF NOT EXISTS %s" schema)
+  in
+  let%bind adopted = adopt_legacy conn ~schema in
+  let%bind () =
+    Connection.execute_script
+      conn
+      ~label:"search_path"
+      (sprintf "SET search_path TO %s" schema)
+  in
+  return adopted
+;;
+
+let connect ?database_url ?(schema = default_schema) ?(max_connections = 4) () =
   let open Deferred.Or_error.Let_syntax in
+  let%bind schema = Deferred.return (validate_schema schema) in
   let%bind config =
     Deferred.return
       (match database_url with
@@ -30,13 +174,21 @@ let connect ?database_url ?(max_connections = 4) () =
   in
   let config = { config with application_name = "transaction-monitoring" } in
   let%bind conn = or_error ~label:"connect" (Connection.connect config) in
-  let%bind.Deferred applied = Migrate.apply conn migrations in
+  let%bind.Deferred result =
+    match%bind.Deferred migrate conn ~schema with
+    | Error e -> Deferred.return (Error (Pg_error.to_error e))
+    | Ok (_ : int list) ->
+      Deferred.map
+        (Migrate.apply conn migrations)
+        ~f:(Result.map_error ~f:Migrate.Error.to_error)
+  in
   let%bind.Deferred () = Connection.close conn in
   let%map applied_migrations =
-    Deferred.return (Result.map_error applied ~f:Migrate.Error.to_error)
+    Deferred.return (Or_error.tag result ~tag:("migrating schema " ^ schema))
   in
   { pool = Pool.create ~max_size:max_connections config
-  ; description = "postgres " ^ Config.to_string_hum config
+  ; schema
+  ; description = sprintf "postgres %s schema %s" (Config.to_string_hum config) schema
   ; applied_migrations
   }
 ;;
@@ -91,20 +243,21 @@ let find_decision t id =
   Pool.fetch_opt
     t.pool
     ~label:"find_decision"
-    "SELECT body, body_version FROM transaction_monitoring.decisions WHERE event_id = $1"
+    (q t.schema "SELECT body, body_version FROM {s}.decisions WHERE event_id = $1")
     ~params:[ Param.string (Ids.Event_id.to_string id) ]
     ~row:decision_row
   |> or_error ~label:"find_decision"
 ;;
 
-let insert_alert_events conn (alert : Alert.t) events =
+let insert_alert_events t conn (alert : Alert.t) events =
   let first = alert.version - List.length events + 1 in
   Deferred.Result.List.iteri events ~f:(fun i e ->
     Query.execute
       conn
       ~label:"insert_alert_event"
-      "INSERT INTO transaction_monitoring.alert_events (alert_id, seq, body) VALUES ($1, \
-       $2, $3)"
+      (q
+         t.schema
+         "INSERT INTO {s}.alert_events (alert_id, seq, body) VALUES ($1, $2, $3)")
       ~params:
         [ Param.string (Ids.Alert_id.to_string alert.id)
         ; Param.int (first + i)
@@ -135,8 +288,10 @@ let commit t (c : Store.Commit.t) =
       Query.execute
         conn
         ~label:"insert_event"
-        "INSERT INTO transaction_monitoring.events (event_id, customer, occurred_at, \
-         body) VALUES ($1, $2, $3, $4) ON CONFLICT (event_id) DO NOTHING"
+        (q
+           t.schema
+           "INSERT INTO {s}.events (event_id, customer, occurred_at, body) VALUES ($1, \
+            $2, $3, $4) ON CONFLICT (event_id) DO NOTHING")
         ~params:
           [ Param.string (Ids.Event_id.to_string c.event.id)
           ; Param.string (Ids.Customer_id.to_string c.event.customer)
@@ -149,8 +304,7 @@ let commit t (c : Store.Commit.t) =
       Query.fetch_one
         conn
         ~label:"duplicate_decision"
-        "SELECT body, body_version FROM transaction_monitoring.decisions WHERE event_id \
-         = $1"
+        (q t.schema "SELECT body, body_version FROM {s}.decisions WHERE event_id = $1")
         ~params:[ Param.string (Ids.Event_id.to_string c.event.id) ]
         ~row:decision_row
       >>| fun d -> Store.Commit_result.Duplicate d
@@ -160,9 +314,11 @@ let commit t (c : Store.Commit.t) =
         Query.execute
           conn
           ~label:"insert_decision"
-          "INSERT INTO transaction_monitoring.decisions (event_id, customer, outcome, \
-           score, model_version, decided_at, body, body_version, attribution) VALUES \
-           ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+          (q
+             t.schema
+             "INSERT INTO {s}.decisions (event_id, customer, outcome, score, \
+              model_version, decided_at, body, body_version, attribution) VALUES ($1, \
+              $2, $3, $4, $5, $6, $7, $8, $9)")
           ~params:
             [ Param.string (Ids.Event_id.to_string d.event_id)
             ; Param.string (Ids.Customer_id.to_string d.customer)
@@ -183,23 +339,26 @@ let commit t (c : Store.Commit.t) =
             Query.execute
               conn
               ~label:"insert_alert"
-              "INSERT INTO transaction_monitoring.alerts (alert_id, event_id, customer, \
-               status, sar_candidate, version, opened_at, updated_at, body, \
-               body_version, attribution) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, \
-               $10, $11) ON CONFLICT (alert_id) DO NOTHING"
+              (q
+                 t.schema
+                 "INSERT INTO {s}.alerts (alert_id, event_id, customer, status, \
+                  sar_candidate, version, opened_at, updated_at, body, body_version, \
+                  attribution) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON \
+                  CONFLICT (alert_id) DO NOTHING")
               ~params:(alert_params alert)
           in
-          insert_alert_events conn alert events
+          insert_alert_events t conn alert events
       in
       let customer = Profile.Customer.of_snapshot c.customer in
       let%bind (_ : int) =
         Query.execute
           conn
           ~label:"upsert_customer_profile"
-          "INSERT INTO transaction_monitoring.customer_profiles (customer, events, body) \
-           VALUES ($1, $2, $3) ON CONFLICT (customer) DO UPDATE SET events = \
-           EXCLUDED.events, body = EXCLUDED.body WHERE \
-           transaction_monitoring.customer_profiles.events < EXCLUDED.events"
+          (q
+             t.schema
+             "INSERT INTO {s}.customer_profiles (customer, events, body) VALUES ($1, $2, \
+              $3) ON CONFLICT (customer) DO UPDATE SET events = EXCLUDED.events, body = \
+              EXCLUDED.body WHERE {s}.customer_profiles.events < EXCLUDED.events")
           ~params:
             [ Param.string
                 (Ids.Customer_id.to_string (Profile.Customer.customer customer))
@@ -213,10 +372,12 @@ let commit t (c : Store.Commit.t) =
         Query.execute
           conn
           ~label:"upsert_counterparty_profile"
-          "INSERT INTO transaction_monitoring.counterparty_profiles (counterparty, \
-           events, body) VALUES ($1, $2, $3) ON CONFLICT (counterparty) DO UPDATE SET \
-           events = EXCLUDED.events, body = EXCLUDED.body WHERE \
-           transaction_monitoring.counterparty_profiles.events < EXCLUDED.events"
+          (q
+             t.schema
+             "INSERT INTO {s}.counterparty_profiles (counterparty, events, body) VALUES \
+              ($1, $2, $3) ON CONFLICT (counterparty) DO UPDATE SET events = \
+              EXCLUDED.events, body = EXCLUDED.body WHERE \
+              {s}.counterparty_profiles.events < EXCLUDED.events")
           ~params:
             [ Param.string
                 (Ids.Counterparty_id.to_string (Profile.Counterparty.counterparty cp))
@@ -235,7 +396,7 @@ let load_customer t id =
   Pool.fetch_opt
     t.pool
     ~label:"load_customer"
-    "SELECT body FROM transaction_monitoring.customer_profiles WHERE customer = $1"
+    (q t.schema "SELECT body FROM {s}.customer_profiles WHERE customer = $1")
     ~params:[ Param.string (Ids.Customer_id.to_string id) ]
     ~row:customer_row
   |> or_error ~label:"load_customer"
@@ -245,8 +406,7 @@ let load_counterparty t id =
   Pool.fetch_opt
     t.pool
     ~label:"load_counterparty"
-    "SELECT body FROM transaction_monitoring.counterparty_profiles WHERE counterparty = \
-     $1"
+    (q t.schema "SELECT body FROM {s}.counterparty_profiles WHERE counterparty = $1")
     ~params:[ Param.string (Ids.Counterparty_id.to_string id) ]
     ~row:counterparty_row
   |> or_error ~label:"load_counterparty"
@@ -256,7 +416,7 @@ let find_alert t id =
   Pool.fetch_opt
     t.pool
     ~label:"find_alert"
-    "SELECT body, body_version FROM transaction_monitoring.alerts WHERE alert_id = $1"
+    (q t.schema "SELECT body, body_version FROM {s}.alerts WHERE alert_id = $1")
     ~params:[ Param.string (Ids.Alert_id.to_string id) ]
     ~row:alert_row
   |> or_error ~label:"find_alert"
@@ -270,19 +430,21 @@ let update_alert t (alert : Alert.t) events =
       Query.execute
         conn
         ~label:"update_alert"
-        "UPDATE transaction_monitoring.alerts SET status = $4, sar_candidate = $5, \
-         version = $6, updated_at = $8, body = $9, body_version = $10, attribution = $11 \
-         WHERE alert_id = $1 AND event_id = $2 AND customer = $3 AND opened_at = $7 AND \
-         version = $12"
+        (q
+           t.schema
+           "UPDATE {s}.alerts SET status = $4, sar_candidate = $5, version = $6, \
+            updated_at = $8, body = $9, body_version = $10, attribution = $11 WHERE \
+            alert_id = $1 AND event_id = $2 AND customer = $3 AND opened_at = $7 AND \
+            version = $12")
         ~params:(alert_params alert @ [ Param.int expected ])
     in
     if updated = 1
-    then insert_alert_events conn alert events >>| fun () -> Store.Alert_update.Updated
+    then insert_alert_events t conn alert events >>| fun () -> Store.Alert_update.Updated
     else
       Query.fetch_opt
         conn
         ~label:"alert_conflict"
-        "SELECT body, body_version FROM transaction_monitoring.alerts WHERE alert_id = $1"
+        (q t.schema "SELECT body, body_version FROM {s}.alerts WHERE alert_id = $1")
         ~params:[ Param.string (Ids.Alert_id.to_string alert.id) ]
         ~row:alert_row
       >>| fun stored -> Store.Alert_update.Conflict stored)
@@ -293,9 +455,11 @@ let alerts ?status ?customer t =
   Pool.fetch_all
     t.pool
     ~label:"alerts"
-    "SELECT body, body_version FROM transaction_monitoring.alerts WHERE ($1::text IS \
-     NULL OR status = $1) AND ($2::text IS NULL OR customer = $2) ORDER BY opened_at, \
-     alert_id COLLATE \"C\""
+    (q
+       t.schema
+       "SELECT body, body_version FROM {s}.alerts WHERE ($1::text IS NULL OR status = \
+        $1) AND ($2::text IS NULL OR customer = $2) ORDER BY opened_at, alert_id COLLATE \
+        \"C\"")
     ~params:
       [ Param.option Type.string (Option.map status ~f:Alert.Status.to_string)
       ; Param.option Type.string (Option.map customer ~f:Ids.Customer_id.to_string)
@@ -308,8 +472,7 @@ let alert_events t id =
   Pool.fetch_all
     t.pool
     ~label:"alert_events"
-    "SELECT body FROM transaction_monitoring.alert_events WHERE alert_id = $1 ORDER BY \
-     seq"
+    (q t.schema "SELECT body FROM {s}.alert_events WHERE alert_id = $1 ORDER BY seq")
     ~params:[ Param.string (Ids.Alert_id.to_string id) ]
     ~row:alert_event_row
   |> or_error ~label:"alert_events"
@@ -319,8 +482,10 @@ let decisions ?customer t =
   Pool.fetch_all
     t.pool
     ~label:"decisions"
-    "SELECT body, body_version FROM transaction_monitoring.decisions WHERE ($1::text IS \
-     NULL OR customer = $1) ORDER BY decided_at, event_id COLLATE \"C\""
+    (q
+       t.schema
+       "SELECT body, body_version FROM {s}.decisions WHERE ($1::text IS NULL OR customer \
+        = $1) ORDER BY decided_at, event_id COLLATE \"C\"")
     ~params:
       [ Param.option Type.string (Option.map customer ~f:Ids.Customer_id.to_string) ]
     ~row:decision_row
@@ -340,8 +505,10 @@ let record_model t (m : Store.Model_version.t) =
   Pool.execute
     t.pool
     ~label:"record_model"
-    "INSERT INTO transaction_monitoring.model_versions (version, name, policy, \
-     activated_at) VALUES ($1, $2, $3, $4) ON CONFLICT (version) DO NOTHING"
+    (q
+       t.schema
+       "INSERT INTO {s}.model_versions (version, name, policy, activated_at) VALUES ($1, \
+        $2, $3, $4) ON CONFLICT (version) DO NOTHING")
     ~params:
       [ Param.string m.version
       ; Param.string m.name
@@ -356,9 +523,10 @@ let current_model t =
   Pool.fetch_opt
     t.pool
     ~label:"current_model"
-    "SELECT name, version, policy, activated_at FROM \
-     transaction_monitoring.model_versions ORDER BY activated_at DESC, version COLLATE \
-     \"C\" DESC LIMIT 1"
+    (q
+       t.schema
+       "SELECT name, version, policy, activated_at FROM {s}.model_versions ORDER BY \
+        activated_at DESC, version COLLATE \"C\" DESC LIMIT 1")
     ~row:model_row
   |> or_error ~label:"current_model"
 ;;
