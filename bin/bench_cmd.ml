@@ -54,10 +54,13 @@ let command =
        let profiles, events = setup ~customers ~days in
        let n = Array.length events in
        let rules_only = Evaluator.create config |> Or_error.ok_exn in
+       let loaded =
+         Option.map model ~f:(fun path -> Model.load path |> Or_error.ok_exn)
+       in
        let with_model =
-         Option.map model ~f:(fun path ->
+         Option.map loaded ~f:(fun m ->
            Evaluator.create
-             ~model:(Model.load path |> Or_error.ok_exn)
+             ~model:m
              ~policy:{ Policy.default with model_mode = Active }
              config
            |> Or_error.ok_exn)
@@ -91,6 +94,30 @@ let command =
          ]
          @ Option.value_map with_model ~default:[] ~f:(fun ev ->
            [ decide_test "views + rules + model" ev ])
+         @ Option.value_map loaded ~default:[] ~f:(fun m ->
+           (* The explanation alone, on precomputed feature vectors: what a held decision
+              adds. *)
+           let explainer = Model.explainer m |> Or_error.ok_exn in
+           let vectors =
+             Array.map events ~f:(fun e -> Features.encode config (ctx_of e))
+           in
+           let i = ref 0 in
+           let into = Array.create ~len:(Risk_models.Schema.length Features.schema) 0. in
+           [ Bench.Test.create ~name:"model contributions" (fun () ->
+               let x = vectors.(!i) in
+               i := (!i + 1) % Array.length vectors;
+               ignore
+                 (Sys.opaque_identity
+                    (Risk_models.Explainer.contributions_u explainer x ~into)
+                  : float#))
+           ; Bench.Test.create ~name:"explanation (top 5)" (fun () ->
+               let x = vectors.(!i) in
+               i := (!i + 1) % Array.length vectors;
+               ignore
+                 (Sys.opaque_identity
+                    (Risk_models.Explainer.explain ~label:Features.label explainer x)
+                  : Risk_models.Explanation.t))
+           ])
        in
        Bench.bench
          ~run_config:
