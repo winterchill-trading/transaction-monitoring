@@ -2,6 +2,51 @@ open! Core
 module Rule = Risk_rules.Rule
 module Country = Risk_rules.Country
 
+module Override = struct
+  type t =
+    { typologies : Typology.t list [@default []]
+    ; countries : Country.t list [@default []]
+    ; severity : Risk_rules.Severity.t
+    }
+  [@@deriving sexp, compare, equal]
+
+  let matches t (typology : Typology.t) (event : Event.t) =
+    (List.is_empty t.typologies || List.mem t.typologies typology ~equal:Typology.equal)
+    && (List.is_empty t.countries
+        || List.exists [ event.counterparty_country; event.ip_country ] ~f:(function
+          | Some c -> List.mem t.countries c ~equal:Country.equal
+          | None -> false))
+  ;;
+
+  (* Both lists beat countries only, which beats typologies only: a country rule is
+     usually the compliance function's sharper statement. *)
+  let specificity t =
+    (if List.is_empty t.typologies then 0 else 1)
+    + if List.is_empty t.countries then 0 else 2
+  ;;
+
+  (* The most specific matching override; among equally specific ones, the most severe
+     (fail closed). *)
+  let find overrides typology event =
+    List.filter overrides ~f:(fun o -> matches o typology event)
+    |> List.max_elt ~compare:(fun a b ->
+      match Int.compare (specificity a) (specificity b) with
+      | 0 -> Risk_rules.Severity.compare a.severity b.severity
+      | c -> c)
+  ;;
+
+  let describe t =
+    let list f l =
+      if List.is_empty l then "any" else List.map l ~f |> String.concat ~sep:","
+    in
+    sprintf
+      "%s for typologies %s, countries %s"
+      (Risk_rules.Severity.to_string t.severity)
+      (list Typology.name t.typologies)
+      (list Country.to_string t.countries)
+  ;;
+end
+
 module Config = struct
   let countries = List.map ~f:Country.of_string
 
@@ -29,10 +74,53 @@ module Config = struct
     ; unusual_min_history : int [@default 10]
     ; disabled : Typology.t list [@default []]
     ; shadow : Typology.t list [@default []]
+    ; overrides : Override.t list [@default []]
     }
   [@@deriving sexp, compare, equal]
 
   let default = t_of_sexp (Sexp.List [])
+
+  let validate_overrides t =
+    let mem l x = List.mem l x ~equal:Typology.equal in
+    List.concat_mapi t.overrides ~f:(fun i (o : Override.t) ->
+      let at msg = [%message msg ~override:(i : int) (o : Override.t)] in
+      List.filter_opt
+        [ (if List.is_empty o.typologies && List.is_empty o.countries
+           then Some (at "override names no typology and no country")
+           else None)
+        ; (if mem o.typologies Threshold_report
+           then
+             Some
+               (at
+                  "threshold_report is a reporting obligation recorded at Allow; it \
+                   cannot be overridden")
+           else None)
+        ; List.find o.typologies ~f:(mem t.disabled)
+          |> Option.map ~f:(fun ty ->
+            at (sprintf "override of disabled typology %s" (Typology.name ty)))
+        ; List.find o.typologies ~f:(mem t.shadow)
+          |> Option.map ~f:(fun ty ->
+            at
+              (sprintf
+                 "override of shadow typology %s has no effect (shadow hits stay at \
+                  Allow)"
+                 (Typology.name ty)))
+        ; (if List.contains_dup o.typologies ~compare:Typology.compare
+              || List.contains_dup o.countries ~compare:Country.compare
+           then Some (at "override lists a typology or country twice")
+           else None)
+        ; List.findi t.overrides ~f:(fun j (p : Override.t) ->
+            j < i
+            && [%equal: Typology.t list]
+                 (List.sort p.typologies ~compare:Typology.compare)
+                 (List.sort o.typologies ~compare:Typology.compare)
+            && [%equal: Country.t list]
+                 (List.sort p.countries ~compare:Country.compare)
+                 (List.sort o.countries ~compare:Country.compare))
+          |> Option.map ~f:(fun (j, _) ->
+            at (sprintf "same typologies and countries as override %d" j))
+        ])
+  ;;
 
   let validate t =
     let positive name v =
@@ -72,6 +160,7 @@ module Config = struct
            else Some [%message "spans must be positive"])
         ]
     in
+    let errors = errors @ validate_overrides t in
     if List.is_empty errors
     then Ok t
     else
@@ -401,12 +490,43 @@ let rule (c : Config.t) (t : Typology.t) =
   | Unusual_amount -> unusual_amount c
 ;;
 
+(* A rule whose hits take the severity of the matching override, if any; the override is
+   named in the evidence so the decision shows why it is not the default. *)
+let with_overrides (c : Config.t) (t : Typology.t) r =
+  let overrides =
+    List.filter c.overrides ~f:(fun (o : Override.t) ->
+      List.is_empty o.typologies || List.mem o.typologies t ~equal:Typology.equal)
+  in
+  match t, overrides with
+  | Threshold_report, _ | _, [] -> r
+  | _ ->
+    let max_severity =
+      List.fold overrides ~init:(Rule.severity r) ~f:(fun acc o ->
+        Risk_rules.Severity.max acc o.severity)
+    in
+    Rule.create_graded ~name:(Rule.name r) ~max_severity (fun (ctx : Context.t) ->
+      Option.map (Rule.check r ctx) ~f:(fun (hit : Risk_rules.Hit.t) ->
+        match Override.find overrides t ctx.event with
+        | None ->
+          { Rule.Outcome.severity = hit.severity
+          ; code = hit.code
+          ; reason = hit.reason
+          ; evidence = hit.evidence
+          }
+        | Some o ->
+          { severity = o.severity
+          ; code = hit.code
+          ; reason = hit.reason
+          ; evidence = hit.evidence @ [ "severity_override", Override.describe o ]
+          }))
+;;
+
 let all (c : Config.t) =
   List.filter_map Typology.all ~f:(fun t ->
     if List.mem c.disabled t ~equal:Typology.equal
     then None
     else (
-      let r = rule c t in
+      let r = with_overrides c t (rule c t) in
       Some
         (if List.mem c.shadow t ~equal:Typology.equal then Rule.cap r ~max:Allow else r)))
 ;;

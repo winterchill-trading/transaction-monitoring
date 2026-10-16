@@ -29,9 +29,40 @@
     - [unusual_amount]: outbound 3 000 or more and 10 times the customer's p95, with 10 or
       more earlier events.
 
-    Amounts are in the reporting currency. *)
+    Amounts are in the reporting currency.
+
+    Severities can be overridden per typology, per country, or both ({!Config.overrides}):
+    e.g. hits on payments touching a country under FATF countermeasures go to [Block]
+    instead of the [Review] (hold) they default to. *)
 
 open! Core
+
+module Override : sig
+  (** Changes the severity of matching hits (and so the decision: [Allow] allows,
+      [Challenge] and [Review] hold, [Block] blocks).
+
+      An override matches a hit when its typology is in [typologies] (empty: any) and the
+      event's counterparty country or IP country is in [countries] (empty: any). When
+      several match, the most specific wins (typologies and countries, then countries
+      only, then typologies only), and among equally specific ones the most severe.
+      [threshold_report] hits are never overridden. The applied override is added to the
+      hit's evidence as ["severity_override"]. In a config file:
+
+      {v
+      (overrides
+       (((countries (KP IR MM)) (severity Block))
+        ((typologies (structuring)) (severity Block))))
+      v} *)
+  type t =
+    { typologies : Typology.t list
+    ; countries : Risk_rules.Country.t list
+    ; severity : Risk_rules.Severity.t
+    }
+  [@@deriving sexp, compare, equal]
+
+  (** The override that applies to a hit of this typology on this event, if any. *)
+  val find : t list -> Typology.t -> Event.t -> t option
+end
 
 module Config : sig
   type t =
@@ -58,6 +89,7 @@ module Config : sig
     ; unusual_min_history : int
     ; disabled : Typology.t list (** not run at all *)
     ; shadow : Typology.t list (** run with hits capped at Allow: logged, no effect *)
+    ; overrides : Override.t list (** severity overrides, see {!Override} *)
     }
   [@@deriving sexp, compare, equal]
 
@@ -66,7 +98,10 @@ module Config : sig
       replaced by lists the compliance function maintains. *)
   val default : t
 
-  (** Positive counts and amounts, a band in (0, 10 000) bps, positive spans. *)
+  (** Positive counts and amounts, a band in (0, 10 000) bps, positive spans. Overrides
+      must name a typology or a country, never [threshold_report], a disabled or a shadow
+      typology, nor repeat an entry, and no two may cover the same typologies and
+      countries. *)
   val validate : t -> t Or_error.t
 
   (** A sexp file of [t]; missing fields take their default. *)
