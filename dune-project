@@ -55,4 +55,5 @@
   risk-models
   pg-async
   (base_quickcheck :with-test)
+  (sanctions-screening-pg :with-test)
   (odoc :with-doc)))

@@ -32,6 +32,9 @@ jobs:
             payments-core https://github.com/winterchill-trading/payments-core.git
             risk-rules https://github.com/winterchill-trading/risk-rules.git
             risk-models https://github.com/winterchill-trading/risk-models.git
+            kyc-core https://github.com/winterchill-trading/kyc-core.git
+            sanctions-screening https://github.com/winterchill-trading/sanctions-screening.git
+            sanctions-screening-pg https://github.com/winterchill-trading/sanctions-screening.git
       - run: opam exec -- dune build
       - run: opam exec -- dune test
       # odoc does not declare result; the local switch only had it transitively.
