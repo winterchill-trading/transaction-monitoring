@@ -22,9 +22,9 @@ PostgreSQL through `pg-async`).
 | `test/` | Expect tests, Quickcheck properties, store conformance, model parity |
 | `bin/` | The `transaction-monitoring` command (generate, features, replay, bench, ...) |
 | `examples/` | Rules config and policy files; `quickstart.ml` with its expected output |
-| `migrations/` | PostgreSQL schema, embedded into the library at build time |
+| `migrations/` | PostgreSQL tables (unqualified), embedded into the library at build time and applied inside the library's own schema |
 | `ml/` | Python training, evaluation and export (`train.py`, `run.sh`) |
-| `models/` | The committed model export and its metrics |
+| `models/` | The committed model export and its metrics; embedded into the library (`Model.bundled`) and installed under `share/` (`models/dune`) |
 | `.github/` | CI workflow |
 
 ## Build, test, docs
@@ -55,7 +55,14 @@ Standalone: `opam repo add winterchill https://github.com/winterchill-trading/op
 - `Features` is the only feature code; `ml/train.py` reads the CSV that
   `transaction-monitoring features` writes. A feature change means a new schema
   version, a retrained model and a new parity fixture.
-- SQL and pg-async types only in `lib/store_pg.ml` and `migrations/`.
+- SQL and pg-async types only in `lib/store_pg.ml` and `migrations/`. Queries name
+  tables as `{s}.table` and `q` substitutes the configured schema; never write
+  `transaction_monitoring.` or an unqualified table there. Never edit `0001` or `0002`:
+  their checksums identify 0.1.x installs for adoption (`legacy_checksums`).
+- `Store.S` changes need both stores and `test/test_revoke.ml`'s `check` (it runs on
+  both) or the conformance suite.
+- Profiles only move forward; anything that must forget an event rebuilds from
+  `customer_history` / `counterparty_history` (see `Monitor.revoke`).
 - Comments for humans at non-obvious choices (bucket-aligned windows, clamped times,
   the prior shift in the model export).
 - Formatting: `opam exec --switch 5.2.0+ox -- dune build --root .. @transaction-monitoring/fmt --auto-promote`.
@@ -69,7 +76,8 @@ Standalone: `opam repo add winterchill https://github.com/winterchill-trading/op
   them `fixed-decimal`, `payments-core`), plus `core`, `async`, `core_unix`,
   `core_bench`, `yojson`, `zarith`.
 - CI pin order: `pg-async`, `fixed-decimal`, `money`, `ledger`, `payments-core`,
-  `risk-rules`, `risk-models`.
+  `risk-rules`, `risk-models`, `kyc-core`, `sanctions-screening`,
+  `sanctions-screening-pg` (test only: `test/test_two_libraries.ml`).
 - No org repository depends on it yet.
 
 ## CI
@@ -96,7 +104,11 @@ fails on warnings, and the shared `obj-magic` workflow. Check a run with
 - Model contributions are not causes. Any text a person reads says "model
   contributions"; customers never see them (tipping off).
 - Retraining or re-exporting the model changes its version string, which the quickstart
-  and some tests print: update those expectations in the same change.
+  and some tests print: update those expectations in the same change. The model is also
+  embedded (`lib/bundled_model_json.ml` is generated from `models/tm-aml-gbdt/model.json`),
+  so a retrain changes the library.
+- Severity overrides never create hits; a test that expects a block from a country
+  override needs a rule that fires on that event first.
 - Another agent's half-written sibling can break a workspace build; filter the output
   for `transaction-monitoring/` paths before treating it as a failure.
 
