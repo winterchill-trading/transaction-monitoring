@@ -23,3 +23,8 @@ val score : t -> float array -> float
 (** Calibrated score with the top three reasons (features and their contribution to the
     log-odds). *)
 val explain : t -> float array -> float * (string * float) list
+
+(** Exact per-feature contributions for this model (path-dependent tree attributions).
+    Fails for an export without node covers. An explainer owns scratch space: one per
+    evaluator. *)
+val explainer : t -> Risk_models.Explainer.t Or_error.t

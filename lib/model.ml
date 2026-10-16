@@ -20,3 +20,5 @@ let explain t x =
   let s = Scorer.explain t x in
   s.value, s.reasons
 ;;
+
+let explainer t = Risk_models.Explainer.create t
