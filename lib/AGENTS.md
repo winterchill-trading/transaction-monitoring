@@ -14,3 +14,9 @@ runs histories.
 - New typology: add the constructor to `Typology` (a `Stable.V2` if `V1` is pinned),
   its rule in `rules.ml`, an expect test in `../test/test_rules.ml` and a row in the
   README table with its reference.
+- `Evaluator.decide` computes the model's explanation (risk-models `Explainer`, which
+  owns scratch space) only for decisions a person reviews; keep it off the allow path,
+  it costs about ten decisions. Labels for features live in `Features.label`; a test
+  checks every schema feature has one.
+- `Decision` and `Alert` are `Stable.V2`; `store_pg.ml` reads V1 rows by `body_version`
+  and upgrades them with `of_v1`.
