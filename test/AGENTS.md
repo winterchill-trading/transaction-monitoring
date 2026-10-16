@@ -10,3 +10,11 @@ Inline expect tests and Quickcheck properties (`-source-tree-root .` in `dune`).
   (`test_store_memory.ml`, `test_store_pg.ml`); PostgreSQL comes from
   `TM_TEST_DATABASE_URL` or a throwaway `Pg_test` cluster (`test_db.ml`).
 - `fixtures/parity.csv` is written by `../ml/train.py`; regenerate it with every model.
+- `test_revoke.ml`: the revocation property (stored profiles after `Monitor.revoke`
+  equal profiles that never saw the event, and later decisions match) on the memory
+  store over 150 seeded streams and on PostgreSQL over three; its `check` is the place
+  to extend when `Store.S` grows.
+- `test_two_libraries.ml`: the host app, sanctions-screening and this library migrate
+  into one database (needs `sanctions-screening-pg`).
+- `fixtures/legacy-migrations/` are the migration files as 0.1.x shipped them, for the
+  adoption test; never update them.
