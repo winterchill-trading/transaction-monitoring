@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+## 0.1.2
+
+- `Store_pg` owns its schema (default `transaction_monitoring`, `connect ~schema`) and
+  keeps its own `schema_migrations` inside it instead of the unqualified table of the
+  search path, which the host application and sanctions-screening also used at version
+  1. Migrations are unqualified and run with the schema as search path. 0.1.0 and 0.1.1
+  databases are adopted on connect (rows with the old checksums are copied into the
+  schema). Test dependency on `sanctions-screening-pg` for a test that migrates both
+  libraries and a host into one database.
+- `Model.of_string`, `Model.of_json`, `Model.bundled ()` (the model embedded at build
+  time) and `Model.default ()` (`TRANSACTION_MONITORING_MODEL` or the bundled one): no
+  model file needed. The package installs the model under
+  `share/transaction-monitoring/models/`.
+- `Rules.Config.overrides` (`Rules.Override`): severity overrides per typology, per
+  country or both, e.g. block payments touching countermeasure countries instead of
+  holding them; validated; recorded in the hit's evidence.
+  `examples/config-countermeasures.sexp`.
+- `Monitor.revoke`: a decided event that did not happen is rolled out of both profiles
+  (rebuilt from the stored history without it) and the revocation is stored with the
+  rebuilt snapshots. `Store.S` gains `find_event`, `customer_history`,
+  `counterparty_history` and `revoke`; migration `0003_revocations`.
+
 ## 0.1.1
 
 - Every hold and block (and every score from the hold threshold or the abstain band up)
