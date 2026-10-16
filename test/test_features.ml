@@ -97,3 +97,15 @@ let%expect_test "a feature vector (present values only)" =
     out_in_ratio_7d 0.467187
     |}]
 ;;
+
+let%expect_test "every schema feature has a reviewer-facing label" =
+  let unlabelled =
+    Array.filter Features.schema.features ~f:(fun name -> not (Features.has_label name))
+  in
+  print_s [%sexp (unlabelled : string array)];
+  print_endline (Features.label "beneficiary_age_hours");
+  [%expect {|
+    ()
+    hours since the payee was added
+    |}]
+;;
