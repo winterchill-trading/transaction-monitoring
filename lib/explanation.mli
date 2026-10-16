@@ -66,6 +66,22 @@ val of_score
   -> reasons:(string * float) list
   -> t
 
+(** The model abstained: its score fell in the policy's abstain band around the hold
+    threshold. Code ["CUSTOM_TM_MODEL_UNCERTAIN"]. [held]: the policy routes abstentions
+    to a hold (otherwise the rules decide). *)
+val of_uncertain
+  :  name:string
+  -> version:string
+  -> severity:Risk_rules.Severity.t
+  -> score:float
+  -> band:float * float
+  -> threshold:float
+  -> held:bool
+  -> t
+
+(** Whether this is a "model uncertain" explanation. *)
+val is_uncertain : t -> bool
+
 (** One line: severity, source and summary, e.g.
     {v [review] structuring: 3 amounts in [8500.00, 10000.00) within 7d ... v} *)
 val to_string_hum : t -> string

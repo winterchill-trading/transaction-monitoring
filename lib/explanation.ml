@@ -62,6 +62,33 @@ let of_score ~name ~version ~severity ~score ~reasons =
   }
 ;;
 
+let uncertain_code = "CUSTOM_TM_MODEL_UNCERTAIN"
+
+let of_uncertain ~name ~version ~severity ~score ~band:(lo, hi) ~threshold ~held =
+  { source = Model { name; version }
+  ; typology = None
+  ; severity
+  ; code = uncertain_code
+  ; summary =
+      sprintf
+        "model uncertain: score %.6f in the abstain band [%.6f, %.6f) around the hold \
+         threshold %.6f; %s"
+        score
+        lo
+        hi
+        threshold
+        (if held then "held for review" else "the rules decide")
+  ; facts =
+      [ "score", sprintf "%.6f" score
+      ; "band_lower", sprintf "%.6f" lo
+      ; "band_upper", sprintf "%.6f" hi
+      ]
+  ; reference = "policy abstain settings; accuracy-coverage table from replay"
+  }
+;;
+
+let is_uncertain t = String.equal t.code uncertain_code
+
 let to_string_hum t =
   let who =
     match t.source with
