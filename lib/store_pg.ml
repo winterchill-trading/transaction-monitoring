@@ -54,8 +54,35 @@ let body_row reader =
   decode reader body
 ;;
 
-let decision_row = body_row Decision.Stable.V1.bin_reader_t
-let alert_row = body_row Alert.Stable.V1.bin_reader_t
+(* Decisions and alerts have versioned bodies (migration 0002): V1 rows written before it
+   are upgraded on read. *)
+let versioned_row ~v1 ~v2 ~upgrade =
+  let open Row.Let_syntax in
+  let%map_open body = column "body" bytea
+  and version = column "body_version" int in
+  match version with
+  | 1 -> upgrade (decode v1 body)
+  | _ -> decode v2 body
+;;
+
+let decision_row =
+  versioned_row
+    ~v1:Decision.Stable.V1.bin_reader_t
+    ~v2:Decision.Stable.V2.bin_reader_t
+    ~upgrade:Decision.Stable.V2.of_v1
+;;
+
+let alert_row =
+  versioned_row
+    ~v1:Alert.Stable.V1.bin_reader_t
+    ~v2:Alert.Stable.V2.bin_reader_t
+    ~upgrade:Alert.Stable.V2.of_v1
+;;
+
+let attribution_param a =
+  Param.option Type.json (Option.map a ~f:Risk_models.Explanation.to_json_string)
+;;
+
 let alert_event_row = body_row Alert.Event.Stable.V1.bin_reader_t
 let customer_row = body_row Profile.Customer.Stable.Snapshot.V1.bin_reader_t
 let counterparty_row = body_row Profile.Counterparty.Stable.Snapshot.V1.bin_reader_t
@@ -64,7 +91,7 @@ let find_decision t id =
   Pool.fetch_opt
     t.pool
     ~label:"find_decision"
-    "SELECT body FROM transaction_monitoring.decisions WHERE event_id = $1"
+    "SELECT body, body_version FROM transaction_monitoring.decisions WHERE event_id = $1"
     ~params:[ Param.string (Ids.Event_id.to_string id) ]
     ~row:decision_row
   |> or_error ~label:"find_decision"
@@ -95,7 +122,9 @@ let alert_params (a : Alert.t) =
   ; Param.int a.version
   ; Param.time_ns a.opened_at
   ; Param.time_ns a.updated_at
-  ; Param.bytea (encode Alert.Stable.V1.bin_writer_t a)
+  ; Param.bytea (encode Alert.Stable.V2.bin_writer_t a)
+  ; Param.int 2
+  ; attribution_param a.attribution
   ]
 ;;
 
@@ -120,7 +149,8 @@ let commit t (c : Store.Commit.t) =
       Query.fetch_one
         conn
         ~label:"duplicate_decision"
-        "SELECT body FROM transaction_monitoring.decisions WHERE event_id = $1"
+        "SELECT body, body_version FROM transaction_monitoring.decisions WHERE event_id \
+         = $1"
         ~params:[ Param.string (Ids.Event_id.to_string c.event.id) ]
         ~row:decision_row
       >>| fun d -> Store.Commit_result.Duplicate d
@@ -131,7 +161,8 @@ let commit t (c : Store.Commit.t) =
           conn
           ~label:"insert_decision"
           "INSERT INTO transaction_monitoring.decisions (event_id, customer, outcome, \
-           score, model_version, decided_at, body) VALUES ($1, $2, $3, $4, $5, $6, $7)"
+           score, model_version, decided_at, body, body_version, attribution) VALUES \
+           ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
           ~params:
             [ Param.string (Ids.Event_id.to_string d.event_id)
             ; Param.string (Ids.Customer_id.to_string d.customer)
@@ -139,7 +170,9 @@ let commit t (c : Store.Commit.t) =
             ; Param.option Type.float d.score
             ; Param.option Type.string (Option.map d.model ~f:(fun m -> m.version))
             ; Param.time_ns d.decided_at
-            ; Param.bytea (encode Decision.Stable.V1.bin_writer_t d)
+            ; Param.bytea (encode Decision.Stable.V2.bin_writer_t d)
+            ; Param.int 2
+            ; attribution_param d.attribution
             ]
       in
       let%bind () =
@@ -151,8 +184,9 @@ let commit t (c : Store.Commit.t) =
               conn
               ~label:"insert_alert"
               "INSERT INTO transaction_monitoring.alerts (alert_id, event_id, customer, \
-               status, sar_candidate, version, opened_at, updated_at, body) VALUES ($1, \
-               $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (alert_id) DO NOTHING"
+               status, sar_candidate, version, opened_at, updated_at, body, \
+               body_version, attribution) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, \
+               $10, $11) ON CONFLICT (alert_id) DO NOTHING"
               ~params:(alert_params alert)
           in
           insert_alert_events conn alert events
@@ -222,7 +256,7 @@ let find_alert t id =
   Pool.fetch_opt
     t.pool
     ~label:"find_alert"
-    "SELECT body FROM transaction_monitoring.alerts WHERE alert_id = $1"
+    "SELECT body, body_version FROM transaction_monitoring.alerts WHERE alert_id = $1"
     ~params:[ Param.string (Ids.Alert_id.to_string id) ]
     ~row:alert_row
   |> or_error ~label:"find_alert"
@@ -237,8 +271,9 @@ let update_alert t (alert : Alert.t) events =
         conn
         ~label:"update_alert"
         "UPDATE transaction_monitoring.alerts SET status = $4, sar_candidate = $5, \
-         version = $6, updated_at = $8, body = $9 WHERE alert_id = $1 AND event_id = $2 \
-         AND customer = $3 AND opened_at = $7 AND version = $10"
+         version = $6, updated_at = $8, body = $9, body_version = $10, attribution = $11 \
+         WHERE alert_id = $1 AND event_id = $2 AND customer = $3 AND opened_at = $7 AND \
+         version = $12"
         ~params:(alert_params alert @ [ Param.int expected ])
     in
     if updated = 1
@@ -247,7 +282,7 @@ let update_alert t (alert : Alert.t) events =
       Query.fetch_opt
         conn
         ~label:"alert_conflict"
-        "SELECT body FROM transaction_monitoring.alerts WHERE alert_id = $1"
+        "SELECT body, body_version FROM transaction_monitoring.alerts WHERE alert_id = $1"
         ~params:[ Param.string (Ids.Alert_id.to_string alert.id) ]
         ~row:alert_row
       >>| fun stored -> Store.Alert_update.Conflict stored)
@@ -258,9 +293,9 @@ let alerts ?status ?customer t =
   Pool.fetch_all
     t.pool
     ~label:"alerts"
-    "SELECT body FROM transaction_monitoring.alerts WHERE ($1::text IS NULL OR status = \
-     $1) AND ($2::text IS NULL OR customer = $2) ORDER BY opened_at, alert_id COLLATE \
-     \"C\""
+    "SELECT body, body_version FROM transaction_monitoring.alerts WHERE ($1::text IS \
+     NULL OR status = $1) AND ($2::text IS NULL OR customer = $2) ORDER BY opened_at, \
+     alert_id COLLATE \"C\""
     ~params:
       [ Param.option Type.string (Option.map status ~f:Alert.Status.to_string)
       ; Param.option Type.string (Option.map customer ~f:Ids.Customer_id.to_string)
@@ -284,8 +319,8 @@ let decisions ?customer t =
   Pool.fetch_all
     t.pool
     ~label:"decisions"
-    "SELECT body FROM transaction_monitoring.decisions WHERE ($1::text IS NULL OR \
-     customer = $1) ORDER BY decided_at, event_id COLLATE \"C\""
+    "SELECT body, body_version FROM transaction_monitoring.decisions WHERE ($1::text IS \
+     NULL OR customer = $1) ORDER BY decided_at, event_id COLLATE \"C\""
     ~params:
       [ Param.option Type.string (Option.map customer ~f:Ids.Customer_id.to_string) ]
     ~row:decision_row
