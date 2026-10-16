@@ -10,7 +10,8 @@ Guide for AI coding agents working in this repository. Read this first; the subd
 `transaction-monitoring` screens payments in real time for money-laundering and fraud
 typologies: rolling customer and counterparty profiles, typology rules on `risk-rules`,
 a gradient-boosted score through `risk-models`, and an Allow, Hold or Block decision
-with alerts and a case lifecycle. State persists behind `Store.S` (memory and
+with alerts and a case lifecycle. Holds and blocks carry the rule hits and the model's
+exact feature contributions; a policy may let the model abstain near its threshold. State persists behind `Store.S` (memory and
 PostgreSQL through `pg-async`).
 
 ## Layout
@@ -90,7 +91,12 @@ fails on warnings, and the shared `obj-magic` workflow. Check a run with
 - scikit-learn's binning fails on all-missing columns; `train.py` fits on the columns
   with at least two values and maps tree features back to the full schema.
 - Floats from `exp`/`log1p` may differ in the last bit between macOS and Linux; tests
-  print rounded values or counts, never raw scores of synthetic events.
+  print rounded values or counts, never raw scores of synthetic events. Contributions
+  are printed with two decimals for the same reason.
+- Model contributions are not causes. Any text a person reads says "model
+  contributions"; customers never see them (tipping off).
+- Retraining or re-exporting the model changes its version string, which the quickstart
+  and some tests print: update those expectations in the same change.
 - Another agent's half-written sibling can break a workspace build; filter the output
   for `transaction-monitoring/` paths before treating it as a failure.
 
