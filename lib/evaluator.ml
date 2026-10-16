@@ -40,6 +40,7 @@ let create ?model ?(policy = Policy.default) config =
 let config t = t.config
 let policy t = t.policy
 let model t = t.model
+let hold_at t = t.hold_at
 
 let context event ~customer ~counterparty =
   Context.create

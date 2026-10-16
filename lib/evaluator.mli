@@ -20,6 +20,9 @@ val config : t -> Rules.Config.t
 val policy : t -> Policy.t
 val model : t -> Model.t option
 
+(** The model's hold threshold in force (the policy's, else the model file's). *)
+val hold_at : t -> float option
+
 val context
   :  Event.t
   -> customer:Profile.Customer.t
