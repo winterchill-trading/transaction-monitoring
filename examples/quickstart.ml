@@ -117,7 +117,13 @@ let main () =
   List.iter queue ~f:(fun (a : Alert.t) ->
     printf "review %s:\n" (Ids.Alert_id.to_string a.id);
     List.iter a.explanations ~f:(fun e ->
-      printf "  %s\n    %s\n" (Explanation.to_string_hum e) e.reference));
+      printf "  %s\n    %s\n" (Explanation.to_string_hum e) e.reference);
+    (* The model's exact feature contributions to this score, under reviewer-facing names:
+       what the model leaned on, not proof of what happened. *)
+    Option.iter a.attribution ~f:(fun x ->
+      printf "  model contributions to the log-odds (base %.2f):\n" x.base;
+      List.iter x.top ~f:(fun c -> printf "    %-42s %+.2f\n" c.label c.contribution);
+      printf "    %-42s %+.2f\n" "all other features" x.rest));
   let alert = (List.hd_exn queue).id in
   let analyst = Ids.Analyst_id.of_string "analyst-1" in
   let%bind _ =

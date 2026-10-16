@@ -5,6 +5,13 @@ out-2: hold, customer sees "under review"
 review alert-out-2:
   [review] high_risk_corridor: 1200.00 to IR, first time
     FATF R.19 (higher-risk countries); AMLR (EU) 2024/1624 Arts. 29-31 (high-risk third countries)
-  [allow] tm-aml-gbdt@09927dde6762: model score 0.8214; top reasons amount, account_age_days, rail_sepa_instant
+  [allow] tm-aml-gbdt@2f42f21773ff: model score 0.8214; top reasons amount, account_age_days, beneficiary_age_hours
     model metrics in models/<name>/metrics.json
+  model contributions to the log-odds (base -13.48):
+    amount                                     +3.00
+    account age in days                        +2.91
+    hours since the payee was added            +2.56
+    counterparty in the country of residence   +1.33
+    customers paying the counterparty, 7 days  +1.30
+    all other features                         +3.91
 alert closed, release the payment
