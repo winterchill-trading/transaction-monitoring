@@ -67,6 +67,7 @@ transaction-monitoring generate -out events.jsonl          # synthetic labelled 
 transaction-monitoring features -events events.jsonl -out features.csv
 transaction-monitoring replay -events events.jsonl -model models/tm-aml-gbdt/model.json \
   -policy examples/policy-active.sexp -baseline-policy examples/policy-shadow.sexp
+                                         # what changed (with reasons), accuracy-coverage table
 transaction-monitoring bench -model models/tm-aml-gbdt/model.json
 transaction-monitoring typologies                          # codes, descriptions, references
 transaction-monitoring check-model models/tm-aml-gbdt/model.json
@@ -91,7 +92,9 @@ payments) and act on the reply:
 
 - Idempotency: the event id is the key. A retried call returns the stored decision
   (`Already_decided`) and changes no profile; alerts are keyed by event id too.
-- Review queue: `Monitor.review_queue` lists open and assigned alerts, oldest first;
+- Review queue: `Monitor.review_queue` lists open and assigned alerts, oldest first, each
+  with its rule explanations and `attribution` (the model's top five contributions,
+  `Decision.why` renders both);
   `Monitor.apply_alert` moves one through its lifecycle (assign, flag as SAR candidate,
   close as true or false positive, reopen by another analyst). Closing a held payment's
   alert as a false positive is the signal to release it; the application owns that
@@ -114,15 +117,15 @@ payments) and act on the reply:
 | `Window`, `P2_quantile`, `Recent`, `Country_set` | bucketed sliding counters, P-square quantiles, a bounded recent-keys table, a 676-bit country set |
 | `Typology` | the typologies with codes, descriptions and public references |
 | `Context`, `Rules` | what rules see; the typology rules as `Risk_rules.Rule.t`, config as sexp, shadow and disabled typologies |
-| `Explanation` | why a rule or the model objected: typology, code, summary, facts, reference |
-| `Features` | the feature vector: risk-rules' `Features.t` built from event and profiles, laid out by `Risk_models.Encoding`, then 32 AML features |
-| `Model` | a risk-models scorer on this feature schema |
-| `Policy`, `Decision` | how rule hits and the score combine; the decision record (`Stable.V1`) |
-| `Alert` | the alert and its case lifecycle as a pure state machine returning the record and its events |
+| `Explanation` | why a rule or the model objected: typology, code, summary, facts, reference; "model uncertain" for abstentions |
+| `Features` | the feature vector: risk-rules' `Features.t` built from event and profiles, laid out by `Risk_models.Encoding`, then 32 AML features; a reviewer-facing label for each |
+| `Model` | a risk-models scorer on this feature schema, and its explainer |
+| `Policy`, `Decision` | how rule hits and the score combine, with an optional abstain band; the decision record (`Stable.V2`: rule explanations, score, model contributions, abstention) |
+| `Alert` | the alert and its case lifecycle as a pure state machine returning the record and its events; carries the decision's contributions |
 | `Evaluator` | the synchronous core: decide, apply, in-memory profiles |
 | `Store`, `Store_memory`, `Store_pg` | persistence behind `Store.S`; SQL only in `store_pg.ml` and `migrations/` |
 | `Monitor` | the Async `on_event` pipeline with bounded intake, the review queue, alert commands |
-| `Replay` | re-run a history through a candidate model or policy next to a baseline and report what changed |
+| `Replay` | re-run a history through a candidate model or policy next to a baseline and report what changed, why, and the model's accuracy-coverage table |
 | `Synthetic` | the seeded generator of labelled synthetic activity |
 
 ## Profiles
@@ -240,6 +243,61 @@ and only the rules decide. Make it `Active` after a shadow period (risk-models
 suggests two weeks with score PSI below 0.1), and compare first with `replay
 -baseline-policy`.
 
+### Explanations
+
+Every decision a person will look at (every `Hold` and `Block`, and every score from the
+abstain band or the hold threshold up) carries `attribution`: risk-models' exact
+path-dependent attributions (TreeSHAP-style, from the node counts in the export), the
+five features with the largest contributions to the log-odds under the names in
+`Features.label`, the base value and the sum of the rest, so that base plus
+contributions equals the model's margin. The model explanation's top reasons come from
+the same attributions. They are model contributions, not causes, and say so wherever
+they are printed. The review queue in [examples/quickstart.ml](examples/quickstart.ml):
+
+```
+review alert-out-2:
+  [review] high_risk_corridor: 1200.00 to IR, first time
+  ...
+  model contributions to the log-odds (base -13.48):
+    amount                                     +3.00
+    account age in days                        +2.91
+    hours since the payee was added            +2.56
+    counterparty in the country of residence   +1.33
+    customers paying the counterparty, 7 days  +1.30
+    all other features                         +3.91
+```
+
+A model export without node counts still loads; decisions then carry the cheaper path
+reason codes and no attribution.
+
+### Abstaining
+
+A policy may let the model abstain on scores too close to the hold threshold to trust
+([examples/policy-abstain.sexp](examples/policy-abstain.sexp)): within `min_confidence`
+of `hold_at` in log-odds, an abstention either holds the payment with the explanation
+"model uncertain" (`route Hold`) or leaves the decision to the rules
+(`route Rules_only`). A score at or above the block threshold never abstains; in shadow
+mode abstentions are only recorded (`Decision.model_abstained`).
+
+`replay` prints the table to choose the band from: the accuracy, precision and recall of
+the model's own decision at the hold threshold when it abstains on the scores closest to
+it, per coverage. On the whole synthetic history (862 904 events, 2 004 labelled,
+including the warm-up days):
+
+| Coverage | Accuracy | Precision | Recall | Abstain band |
+|---|---|---|---|---|
+| 1.00 | 0.9820 | 0.114 | 0.996 | none |
+| 0.99 | 0.9865 | 0.146 | 0.988 | \[0.000206, 0.00133) |
+| 0.95 | 0.9960 | 0.374 | 0.968 | \[1.72e-05, 0.0157) |
+| 0.90 | 0.9974 | 0.484 | 0.960 | \[6.04e-06, 0.0435) |
+| 0.80 | 0.9983 | 0.623 | 0.949 | \[2.41e-06, 0.102) |
+
+Area under the risk-coverage curve 0.00355. With the example band (0.5 in log-odds,
+scores in \[0.000318, 0.000864), 4 415 abstentions) against the active policy without
+one: routed to holds, 2 131 more alerts and 2 more labelled events caught (recall 0.997
+to 0.998, alert precision 0.063 to 0.059); left to the rules, 1 932 fewer alerts and 5
+labelled events missed (recall 0.995, precision 0.067).
+
 Parity: `test/fixtures/parity.csv` holds 400 test rows (with extra missing values and
 values exactly on split thresholds) and scikit-learn's own margin, probability and
 score; the OCaml scores match within 1e-9 (the margin bit for bit: trees only add and
@@ -257,11 +315,18 @@ the following two days' events:
 | Feature vector | 2.4 us | 940 |
 | Views and rules | 2.3 us | 639 |
 | Views, rules and model | 5.9 us | 1 424 |
+| Model contributions (attributions only) | 65 us | 3 |
+| Explanation (attributions and top five) | 68 us | 1 060 |
 
 Full step (decide, then update both profiles), per event: rules p50 4 us, p99 9 us;
-rules and model p50 7 us, p99 17 us (percentiles quantised to 1 us by the macOS clock).
+rules and model p50 5 us, p99 37 us, the tail being the decisions that get an
+explanation (percentiles quantised to 1 us by the macOS clock; the explanation rows were
+measured with other builds running). The explanation cost comes from the model's deep
+trees: leaves with up to 14 distinct features, tabulated up to 10 (27 MB per explainer)
+and integrated at run time beyond.
 The store write is extra: one transaction per event on PostgreSQL. A full replay of the
-862 904 synthetic events with rules, model and a baseline runs in about 8 s.
+862 904 synthetic events with rules, model, explanations and a baseline runs in about
+8 s.
 
 ## Storage
 
@@ -271,20 +336,25 @@ commit per event, in one transaction: the event row first with `ON CONFLICT DO
 NOTHING` (a redelivered or concurrently processed event finds the stored decision),
 then the decision, its alert and alert events, and both profile snapshots, which only
 replace a stored snapshot with fewer events. Alert updates are optimistic on the
-alert's version. A conformance scenario prints the same transcript on both stores, and
+alert's version. Decision and alert bodies are versioned (migration `0002`): new rows
+are `Stable.V2` with `body_version` 2 and the explanation also as JSON in an
+`attribution` column (risk-models' format 1, queryable with `->>`); rows written before
+it are V1 and read back upgraded. A conformance scenario prints the same transcript on both stores, and
 a test restarts the monitor halfway through a synthetic history, on each store, and
 checks every decision equals an uninterrupted replay.
 
 ## Stable types and tests
 
-`Event`, `Decision`, `Alert` (and its events), `Explanation`, `Typology` and the
-profile snapshots have `Stable.V1` bin_io types; the event and snapshot digests are
-pinned in `test/test_event.ml`. Tests: profile properties (incremental equals
+`Event`, `Decision` (V1 and V2), `Alert` (V1 and V2, and its events), `Explanation`,
+`Typology` and the profile snapshots have `Stable` bin_io types; the event, snapshot,
+decision and alert digests are pinned in `test/test_event.ml`. Tests: profile properties (incremental equals
 recomputed, snapshot resume), sketches (P-square accuracy on skewed data), one expect
 test per typology with its explanation, features, the alert lifecycle with a
 Quickcheck invariant over random command sequences, model parity, the conformance
 scenario on memory and PostgreSQL, the monitor (idempotency, overload, restart), the
-replay diff, the example files and the quickstart output.
+replay diff and accuracy-coverage report, explanations on held decisions and both
+abstain routes, V1 rows read back from PostgreSQL, the example files and the quickstart
+output.
 
 PostgreSQL tests use `TM_TEST_DATABASE_URL` when set (CI's Postgres service) and
 otherwise start a throwaway cluster with pg-async's `Pg_test` (needs the server
