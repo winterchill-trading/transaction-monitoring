@@ -10,7 +10,7 @@ let%expect_test "postgres store conformance" =
   let%map () = Store_pg.close store in
   [%expect
     {|
-    (migrations (1))
+    (migrations (1 2))
     (commit (event e1) (r Committed))
     (commit (event e2) (r Committed))
     (commit (event e3) (r Committed))

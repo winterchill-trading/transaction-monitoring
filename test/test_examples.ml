@@ -12,7 +12,9 @@ let%expect_test "example files load" =
   [%expect
     {|
     config equals the default: true
-    ((name active-2026-10) (model_mode Active) (hold_at ()) (block_at ()))
-    ((name shadow-2026-10) (model_mode Shadow) (hold_at ()) (block_at ()))
+    ((name active-2026-10) (model_mode Active) (hold_at ()) (block_at ())
+     (abstain ()))
+    ((name shadow-2026-10) (model_mode Shadow) (hold_at ()) (block_at ())
+     (abstain ()))
     |}]
 ;;
