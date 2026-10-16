@@ -24,3 +24,11 @@
   (with-stdout-to
    %{targets}
    (run gen/gen_migrations.exe %{deps}))))
+
+(rule
+ (targets bundled_model_json.ml)
+ (deps %{project_root}/models/tm-aml-gbdt/model.json)
+ (action
+  (with-stdout-to
+   %{targets}
+   (run gen/gen_embed.exe %{deps}))))
