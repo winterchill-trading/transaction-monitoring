@@ -79,10 +79,18 @@ let%expect_test "stable digests" =
   print_endline [%bin_digest: Event.Stable.V1.t];
   print_endline [%bin_digest: Profile.Customer.Stable.Snapshot.V1.t];
   print_endline [%bin_digest: Profile.Counterparty.Stable.Snapshot.V1.t];
+  print_endline [%bin_digest: Decision.Stable.V1.t];
+  print_endline [%bin_digest: Decision.Stable.V2.t];
+  print_endline [%bin_digest: Alert.Stable.V1.t];
+  print_endline [%bin_digest: Alert.Stable.V2.t];
   [%expect
     {|
     0c95d0f134f6375588f2ecc6201bef52
     dbcac0d438177b0cbdd404e81076a707
     46c4fde5fa46d50754e68a89d3113c7b
+    d3e38d17be911230e57362c3f424c87d
+    0db4ea6d609a8d4b37c4459a147cf1ac
+    d01e43de251167a3876069d91dda3061
+    ee48f4b6bceec64abb01b8a456174f47
     |}]
 ;;
