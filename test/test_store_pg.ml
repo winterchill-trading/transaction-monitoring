@@ -154,3 +154,106 @@ let%expect_test "V1 rows still read; explanations are stored and queryable" =
      (alert_matches_decision true) (rows ((2 (amount) (path_dependent)))))
     |}]
 ;;
+
+let migrations_tables pool =
+  Pg_async.Pool.fetch_all
+    pool
+    "SELECT table_schema::text AS s FROM information_schema.tables WHERE table_name = \
+     'schema_migrations' ORDER BY 1"
+    ~row:Pg_async.Row.(column "s" Pg_async.Type.string)
+  >>| Pg_async.Pg_error.to_or_error
+  >>| Or_error.ok_exn
+;;
+
+(* The host application keeps its own [schema_migrations] (here in [public], at version 1
+   like ours); the library records its migrations inside its own schema, and a second
+   instance under another schema does the same. *)
+let%expect_test "migrations are recorded inside the library's schema" =
+  let open Pg_async in
+  let%bind url = Test_db.fresh_url () in
+  let config = Config.of_url url |> Or_error.ok_exn in
+  let%bind conn = Connection.connect config >>| Pg_error.ok_exn in
+  let%bind host =
+    Migrate.apply
+      conn
+      [ { version = 1; name = "init"; sql = "CREATE TABLE host_accounts (id text)" } ]
+    >>| Result.map_error ~f:Migrate.Error.to_error
+    >>| Or_error.ok_exn
+  in
+  let%bind () = Connection.close conn in
+  let%bind first = Store_pg.connect ~database_url:url () >>| Or_error.ok_exn in
+  let%bind second =
+    Store_pg.connect ~database_url:url ~schema:"tm_second" () >>| Or_error.ok_exn
+  in
+  let%bind again = Store_pg.connect ~database_url:url () >>| Or_error.ok_exn in
+  let pool = Pool.create ~max_size:1 config in
+  let%bind tables = migrations_tables pool in
+  let%bind rejected = Store_pg.connect ~database_url:url ~schema:"Bad-Name" () in
+  print_s
+    [%message
+      ""
+        (host : int list)
+        ~first:
+          ((Store_pg.schema first, Store_pg.applied_migrations first) : string * int list)
+        ~second:
+          ((Store_pg.schema second, Store_pg.applied_migrations second)
+           : string * int list)
+        ~again:(Store_pg.applied_migrations again : int list)
+        (tables : string list)
+        ~bad_name:(Result.is_error rejected : bool)];
+  let%bind () = Pool.close pool in
+  let%bind () = Store_pg.close first in
+  let%bind () = Store_pg.close second in
+  let%map () = Store_pg.close again in
+  [%expect
+    {|
+    ((host (1)) (first (transaction_monitoring (1 2))) (second (tm_second (1 2)))
+     (again ()) (tables (public tm_second transaction_monitoring))
+     (bad_name true))
+    |}]
+;;
+
+(* A database set up by 0.1.x: the old migration files applied through pg-async with the
+   bookkeeping in the shared table. Connecting adopts them instead of re-running them. *)
+let%expect_test "an install from 0.1.x is adopted" =
+  let open Pg_async in
+  let%bind url = Test_db.fresh_url () in
+  let config = Config.of_url url |> Or_error.ok_exn in
+  let%bind legacy =
+    Migrate.load_dir "fixtures/legacy-migrations"
+    >>| Result.map_error ~f:Migrate.Error.to_error
+    >>| Or_error.ok_exn
+  in
+  let%bind conn = Connection.connect config >>| Pg_error.ok_exn in
+  let%bind old =
+    Migrate.apply conn legacy
+    >>| Result.map_error ~f:Migrate.Error.to_error
+    >>| Or_error.ok_exn
+  in
+  let%bind () = Connection.close conn in
+  let%bind store = Store_pg.connect ~database_url:url () >>| Or_error.ok_exn in
+  let pool = Pool.create ~max_size:1 config in
+  let%bind tables = migrations_tables pool in
+  let%bind adopted =
+    Pool.fetch_all
+      pool
+      "SELECT version FROM transaction_monitoring.schema_migrations ORDER BY version"
+      ~row:Row.(column "version" Type.int)
+    >>| Pg_error.to_or_error
+    >>| Or_error.ok_exn
+  in
+  print_s
+    [%message
+      ""
+        (old : int list)
+        ~applied_now:(Store_pg.applied_migrations store : int list)
+        (adopted : int list)
+        (tables : string list)];
+  let%bind () = Pool.close pool in
+  let%map () = Store_pg.close store in
+  [%expect
+    {|
+    ((old (1 2)) (applied_now ()) (adopted (1 2))
+     (tables (public transaction_monitoring)))
+    |}]
+;;

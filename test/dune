@@ -18,6 +18,7 @@
  (inline_tests
   (deps
    (glob_files fixtures/*.csv)
+   (glob_files fixtures/legacy-migrations/*.sql)
    ../models/tm-aml-gbdt/model.json
    (glob_files ../examples/*.sexp))
   (flags
