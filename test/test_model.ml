@@ -128,3 +128,35 @@ let%expect_test "decisions with the model: shadow records, active acts" =
     Active: hold 915, block 322, labelled alerted 220 of 223, unlabelled alerted 1017
     |}]
 ;;
+
+(* The consumer case: no model file next to the binary. The embedded copy is the same
+   model as the file (same version, same scores), and text loads without a temp file. *)
+let%expect_test "bundled and in-memory models equal the file" =
+  let file = Lazy.force model in
+  let bundled = Model.bundled () |> Or_error.ok_exn in
+  let text = In_channel.read_all "../models/tm-aml-gbdt/model.json" in
+  let of_string = Model.of_string text |> Or_error.ok_exn in
+  let of_json = Model.of_json (Yojson.Safe.from_string text) |> Or_error.ok_exn in
+  let rows = parity_rows () in
+  let same m =
+    String.equal (Model.version m) (Model.version file)
+    && List.for_all rows ~f:(fun (x, _, _, _) ->
+      Float.equal (Model.score m x) (Model.score file x))
+  in
+  print_s
+    [%message
+      ""
+        ~bundled_is_file:(String.equal Model.bundled_json text : bool)
+        ~same:(List.map [ bundled; of_string; of_json ] ~f:same : bool list)
+        ~default_without_env:
+          (match Sys.getenv Model.env_var with
+           | Some _ -> "env set, skipped"
+           | None -> Bool.to_string (same (Model.default () |> Or_error.ok_exn)))
+        ~garbage:(Result.is_error (Model.of_string "{\"format\": 1}") : bool)
+        ~not_json:(Result.is_error (Model.of_string "not json") : bool)];
+  [%expect
+    {|
+    ((bundled_is_file true) (same (true true true)) (default_without_env true)
+     (garbage true) (not_json true))
+    |}]
+;;
