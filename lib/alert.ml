@@ -68,9 +68,47 @@ module Stable = struct
       }
     [@@deriving bin_io, sexp, compare, equal]
   end
+
+  module V2 = struct
+    type t =
+      { id : Ids.Alert_id.Stable.V1.t
+      ; event_id : Ids.Event_id.Stable.V1.t
+      ; customer : Ids.Customer_id.Stable.V1.t
+      ; outcome : Decision.Outcome.Stable.V1.t
+      ; explanations : Explanation.Stable.V1.t list
+      ; score : float option
+      ; opened_at : Time_ns.Stable.Alternate_sexp.V1.t
+      ; status : Status.Stable.V1.t
+      ; assignee : Ids.Analyst_id.Stable.V1.t option
+      ; sar_candidate : bool
+      ; resolution : Resolution.Stable.V1.t option
+      ; version : int
+      ; updated_at : Time_ns.Stable.Alternate_sexp.V1.t
+      ; attribution : Risk_models.Explanation.Stable.V1.t option
+      }
+    [@@deriving bin_io, sexp, compare, equal]
+
+    let of_v1 (a : V1.t) =
+      { id = a.id
+      ; event_id = a.event_id
+      ; customer = a.customer
+      ; outcome = a.outcome
+      ; explanations = a.explanations
+      ; score = a.score
+      ; opened_at = a.opened_at
+      ; status = a.status
+      ; assignee = a.assignee
+      ; sar_candidate = a.sar_candidate
+      ; resolution = a.resolution
+      ; version = a.version
+      ; updated_at = a.updated_at
+      ; attribution = None
+      }
+    ;;
+  end
 end
 
-include Stable.V1
+include Stable.V2
 
 module Event = struct
   module Stable = struct
@@ -155,6 +193,7 @@ let open_ (d : Decision.t) =
         ; resolution = None
         ; version = 1
         ; updated_at = d.decided_at
+        ; attribution = d.attribution
         }
       , [ Event.Opened { at = d.decided_at } ] )
 ;;

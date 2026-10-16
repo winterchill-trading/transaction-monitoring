@@ -94,9 +94,32 @@ module Stable : sig
       }
     [@@deriving bin_io, sexp, compare, equal]
   end
+
+  (** V1 plus the model's per-feature explanation copied from the decision. *)
+  module V2 : sig
+    type t =
+      { id : Ids.Alert_id.Stable.V1.t
+      ; event_id : Ids.Event_id.Stable.V1.t
+      ; customer : Ids.Customer_id.Stable.V1.t
+      ; outcome : Decision.Outcome.Stable.V1.t
+      ; explanations : Explanation.Stable.V1.t list
+      ; score : float option
+      ; opened_at : Time_ns.Stable.Alternate_sexp.V1.t
+      ; status : Status.Stable.V1.t
+      ; assignee : Ids.Analyst_id.Stable.V1.t option
+      ; sar_candidate : bool
+      ; resolution : Resolution.Stable.V1.t option
+      ; version : int
+      ; updated_at : Time_ns.Stable.Alternate_sexp.V1.t
+      ; attribution : Risk_models.Explanation.Stable.V1.t option
+      }
+    [@@deriving bin_io, sexp, compare, equal]
+
+    val of_v1 : V1.t -> t
+  end
 end
 
-type t = Stable.V1.t =
+type t = Stable.V2.t =
   { id : Ids.Alert_id.t
   ; event_id : Ids.Event_id.t
   ; customer : Ids.Customer_id.t
@@ -110,6 +133,8 @@ type t = Stable.V1.t =
   ; resolution : Resolution.t option
   ; version : int
   ; updated_at : Time_ns.t
+  ; attribution : Risk_models.Explanation.t option
+  (** the decision's top feature contributions, for the reviewer *)
   }
 [@@deriving sexp_of, compare, equal]
 
