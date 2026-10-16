@@ -10,7 +10,7 @@ let%expect_test "postgres store conformance" =
   let%map () = Store_pg.close store in
   [%expect
     {|
-    (migrations (1 2))
+    (migrations (1 2 3))
     (commit (event e1) (r Committed))
     (commit (event e2) (r Committed))
     (commit (event e3) (r Committed))
@@ -207,9 +207,9 @@ let%expect_test "migrations are recorded inside the library's schema" =
   let%map () = Store_pg.close again in
   [%expect
     {|
-    ((host (1)) (first (transaction_monitoring (1 2))) (second (tm_second (1 2)))
-     (again ()) (tables (public tm_second transaction_monitoring))
-     (bad_name true))
+    ((host (1)) (first (transaction_monitoring (1 2 3)))
+     (second (tm_second (1 2 3))) (again ())
+     (tables (public tm_second transaction_monitoring)) (bad_name true))
     |}]
 ;;
 
@@ -230,8 +230,33 @@ let%expect_test "an install from 0.1.x is adopted" =
     >>| Result.map_error ~f:Migrate.Error.to_error
     >>| Or_error.ok_exn
   in
+  (* An event stored by 0.1.x: no counterparty column yet, filled in on connect. *)
+  let old_event =
+    Fixtures.event ~id:"old" ~counterparty:"old-payee" ~at:Fixtures.t0 10_000
+  in
+  let%bind (_ : int) =
+    Query.execute
+      conn
+      "INSERT INTO transaction_monitoring.events (event_id, customer, occurred_at, body) \
+       VALUES ($1, $2, $3, $4)"
+      ~params:
+        [ Param.string "old"
+        ; Param.string (Ids.Customer_id.to_string old_event.customer)
+        ; Param.time_ns old_event.occurred_at
+        ; Param.bytea (Bin_prot.Writer.to_string Event.Stable.V1.bin_writer_t old_event)
+        ]
+    >>| Pg_error.ok_exn
+  in
   let%bind () = Connection.close conn in
   let%bind store = Store_pg.connect ~database_url:url () >>| Or_error.ok_exn in
+  let (Store.T ((module S), s)) = Store_pg.store store in
+  let%bind backfilled =
+    S.counterparty_history s old_event.counterparty >>| Or_error.ok_exn
+  in
+  print_s
+    [%message
+      "backfilled"
+        ~_:(List.map backfilled ~f:(fun (e : Event.t) -> e.id) : Ids.Event_id.t list)];
   let pool = Pool.create ~max_size:1 config in
   let%bind tables = migrations_tables pool in
   let%bind adopted =
@@ -253,7 +278,8 @@ let%expect_test "an install from 0.1.x is adopted" =
   let%map () = Store_pg.close store in
   [%expect
     {|
-    ((old (1 2)) (applied_now ()) (adopted (1 2))
+    (backfilled (old))
+    ((old (1 2)) (applied_now (3)) (adopted (1 2 3))
      (tables (public transaction_monitoring)))
     |}]
 ;;

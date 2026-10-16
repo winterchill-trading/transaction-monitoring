@@ -59,9 +59,10 @@ let%expect_test "two libraries and the host migrate into one database" =
   let%map () = Store_pg.close monitoring' in
   [%expect
     {|
-    ((host (1)) (sanctions (1)) (monitoring (1 2)) (after_restart (() ()))
+    ((host (1)) (sanctions (1)) (monitoring (1 2 3)) (after_restart (() ()))
      (rows
       ((public 1 init) (sanctions_screening 1 init)
-       (transaction_monitoring 1 init) (transaction_monitoring 2 explanations))))
+       (transaction_monitoring 1 init) (transaction_monitoring 2 explanations)
+       (transaction_monitoring 3 revocations))))
     |}]
 ;;
