@@ -41,7 +41,7 @@ open! Async
 open Transaction_monitoring
 
 let start () =
-  let model = Model.load "models/tm-aml-gbdt/model.json" |> ok_exn in
+  let model = Model.bundled () |> ok_exn in   (* or Model.load path, Model.of_string *)
   let evaluator =
     Evaluator.create ~model ~policy:Policy.default Rules.Config.default |> ok_exn
   in
@@ -103,6 +103,14 @@ payments) and act on the reply:
   alerts and typologies stay internal.
 - Threshold reports: `Decision.threshold_report` marks cash at or above the reporting
   threshold; it is an obligation, not a suspicion, and does not hold the payment.
+- Payments that do not happen: when a decided payment never goes ahead (the customer
+  cancels a held payment, the scheme rejects it, an authorisation is reversed), call
+  `Monitor.revoke monitor event_id ~reason ~at`. Both profiles are rebuilt from the
+  stored history without the event, so velocity windows, new-counterparty and every
+  other feature behave as if it had never been seen; the revocation is stored with the
+  rebuilt snapshots in one transaction, and the event's decision stays (a redelivery is
+  still `Already_decided`). It needs every event of the profile in the store, so warm up
+  through `on_event`; otherwise it refuses and changes nothing.
 - Warm-up: profiles need history. Before going live, replay at least 30 days of booked
   events through the monitor (or `Replay`) so that windows, quantiles and the
   counterparty table are full; on empty profiles every payee is new and the
@@ -119,12 +127,12 @@ payments) and act on the reply:
 | `Context`, `Rules` | what rules see; the typology rules as `Risk_rules.Rule.t`, config as sexp, shadow and disabled typologies |
 | `Explanation` | why a rule or the model objected: typology, code, summary, facts, reference; "model uncertain" for abstentions |
 | `Features` | the feature vector: risk-rules' `Features.t` built from event and profiles, laid out by `Risk_models.Encoding`, then 32 AML features; a reviewer-facing label for each |
-| `Model` | a risk-models scorer on this feature schema, and its explainer |
+| `Model` | a risk-models scorer on this feature schema, and its explainer; `Model.bundled ()` (embedded at build time), `of_string`, `of_json`, `default ()` (`TRANSACTION_MONITORING_MODEL` or the bundled one) |
 | `Policy`, `Decision` | how rule hits and the score combine, with an optional abstain band; the decision record (`Stable.V2`: rule explanations, score, model contributions, abstention) |
 | `Alert` | the alert and its case lifecycle as a pure state machine returning the record and its events; carries the decision's contributions |
 | `Evaluator` | the synchronous core: decide, apply, in-memory profiles |
 | `Store`, `Store_memory`, `Store_pg` | persistence behind `Store.S`; SQL only in `store_pg.ml` and `migrations/` |
-| `Monitor` | the Async `on_event` pipeline with bounded intake, the review queue, alert commands |
+| `Monitor` | the Async `on_event` pipeline with bounded intake, `revoke` for decided events that did not happen, the review queue, alert commands |
 | `Replay` | re-run a history through a candidate model or policy next to a baseline and report what changed, why, and the model's accuracy-coverage table |
 | `Synthetic` | the seeded generator of labelled synthetic activity |
 
@@ -175,7 +183,26 @@ mid-stream, written and read with bin_prot, resumes to exactly the same profile.
 
 Amounts are in the reporting currency. Every threshold, window and country list is in
 the rules config ([examples/config.sexp](examples/config.sexp)); a typology can be
-disabled or run in shadow mode (hits recorded at Allow). The country lists are
+disabled or run in shadow mode (hits recorded at Allow).
+
+Severities can be overridden per typology, per country (the event's counterparty or IP
+country), or both, with `overrides` in the same file
+([examples/config-countermeasures.sexp](examples/config-countermeasures.sexp)):
+
+```
+(overrides
+ (((countries (KP IR MM)) (severity Block))       ; FATF countermeasures: block, not hold
+  ((typologies (structuring)) (severity Block))))
+```
+
+An override changes the severity of a rule's hit, and with it the decision (`Allow`
+allows, `Challenge` and `Review` hold, `Block` blocks); it never creates a hit. When
+several match, the most specific wins (typologies and countries, then countries only,
+then typologies only), then the most severe. The applied override is recorded in the
+hit's evidence (`severity_override`). Validation refuses an override with neither list,
+one naming `threshold_report` (a reporting obligation, always Allow), a disabled or
+shadow typology, a repeated entry, or two overrides covering the same typologies and
+countries. The country lists are
 examples; replace them with lists the compliance function maintains. Counterparty names
 are screened by the sibling `sanctions-screening` library; these rules only see
 countries.
@@ -330,8 +357,24 @@ The store write is extra: one transaction per event on PostgreSQL. A full replay
 
 ## Storage
 
-`Store.S` in domain types with `Store_memory` and `Store_pg` (schema
-`transaction_monitoring`, migrations embedded from [migrations/](migrations/)). One
+`Store.S` in domain types with `Store_memory` and `Store_pg` (migrations embedded from
+[migrations/](migrations/)).
+
+The library owns one PostgreSQL schema, `transaction_monitoring` by default
+(`Store_pg.connect ~schema`): it creates it, and its tables and its own
+`schema_migrations` table live inside it. Nothing is written outside it, so the host
+application's migrations table and other libraries (sanctions-screening keeps
+`sanctions_screening.schema_migrations`) never clash, though all start at version 1; a
+test migrates the host, sanctions-screening and this library into one database. A
+database set up by 0.1.0 or 0.1.1 (bookkeeping rows in the shared `schema_migrations` of
+the search path) is adopted on connect: the rows with this library's old checksums are
+copied into the schema and nothing is applied twice; the old rows may then be deleted by
+hand.
+
+Revocations (migration `0003`) live in a `revocations` table; events gained their
+commit sequence and counterparty so a profile's history can be read back in the order it
+was applied (rows written before `0003` get their counterparty from the body on the
+first connect). One
 commit per event, in one transaction: the event row first with `ON CONFLICT DO
 NOTHING` (a redelivered or concurrently processed event finds the stored decision),
 then the decision, its alert and alert events, and both profile snapshots, which only
@@ -366,8 +409,9 @@ binaries).
 dune build @all @runtest
 ```
 
-CI pins `pg-async`, `fixed-decimal`, `money`, `ledger`, `payments-core`, `risk-rules`
-and `risk-models` from GitHub in that order, installs libpq, runs a Postgres service,
+CI pins `pg-async`, `fixed-decimal`, `money`, `ledger`, `payments-core`, `risk-rules`,
+`risk-models`, `kyc-core` and `sanctions-screening` (with `sanctions-screening-pg`, for
+the two-libraries test) from GitHub in that order, installs libpq, runs a Postgres service,
 and builds the docs with odoc warnings as errors.
 
 ## Known gaps
@@ -387,5 +431,8 @@ and builds the docs with odoc warnings as errors.
   (thresholds compare integer minor units and are exact for any currency).
 - Alerts are per event; grouping several alerts of one customer into one case is left
   to the case-management layer.
+- `Monitor.revoke` reads the customer's and the counterparty's whole stored history; a
+  counterparty paid by very many customers makes it slow. Decisions taken after the
+  revoked event are not revisited.
 - No name screening here (see `sanctions-screening`), no FX conversion (callers supply
   `base_amount`).
